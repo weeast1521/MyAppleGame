@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>🍎 MyAppleGame</title>
+    <!-- 실시간 통신 라이브러리 (로컬 개발 서버이므로 CDN 사용) -->
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7/bundles/stomp.umd.min.js"></script>
+    <link rel="stylesheet" href="/style.css"/>
+</head>
+<body>
+<div id="app">
+
+    <!-- ================= 인증 화면 ================= -->
+    <section id="view-auth" class="card hidden">
+        <h1>🍎 MyAppleGame <span class="sub">사과게임</span></h1>
+        <p class="hint">합이 <b>10</b>이 되도록 사과를 드래그하세요. 솔로 기록 도전과 2인 실시간 대전을 지원합니다.</p>
+
+        <form id="loginForm">
+            <label>이메일
+                <input id="loginEmail" type="email" autocomplete="email" required/>
+            </label>
+            <label>비밀번호
+                <input id="loginPassword" type="password" autocomplete="current-password" required/>
+            </label>
+            <button type="submit" class="primary">로그인</button>
+        </form>
+
+        <form id="signupForm" class="hidden">
+            <label>이메일
+                <input id="signupEmail" type="email" autocomplete="email" required/>
+            </label>
+            <label>비밀번호
+                <input id="signupPassword" type="password" placeholder="8자 이상, 영문+숫자+특수문자" autocomplete="new-password" required/>
+            </label>
+            <label>닉네임
+                <input id="signupNickname" type="text" maxlength="12" placeholder="2~12자" required/>
+            </label>
+            <button type="submit" class="primary">회원가입</button>
+        </form>
+
+        <p class="switchLine">
+            <span id="authSwitchText">계정이 없나요?</span>
+            <a href="#" id="authSwitchBtn">회원가입</a>
+        </p>
+
+        <div class="divider">또는 소셜 로그인</div>
+        <div class="row">
+            <button id="btnKakao" class="social kakao" type="button">카카오로 시작</button>
+            <button id="btnNaver" class="social naver" type="button">네이버로 시작</button>
+        </div>
+
+        <p id="authMsg" class="msg"></p>
+    </section>
+
+    <!-- ================= 메인 화면 ================= -->
+    <section id="view-home" class="hidden">
+        <header class="appHeader card">
+            <div class="brand">🍎 MyAppleGame</div>
+            <div class="userBox">
+                <span id="headerNickname"></span>
+                <button id="btnLogout" class="tiny">로그아웃</button>
+            </div>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab active" data-tab="solo">솔로</button>
+            <button class="tab" data-tab="battle">대전</button>
+            <button class="tab" data-tab="ranking">랭킹</button>
+            <button class="tab" data-tab="records">내 기록</button>
+            <button class="tab" data-tab="profile">내 정보</button>
+        </nav>
+
+        <!-- ===== 솔로 탭 ===== -->
+        <section id="tab-solo" class="card tabPanel">
+            <div id="soloIntro">
+                <h2>솔로 모드</h2>
+                <p class="hint">120초 동안 최대한 많은 사과를 지우세요. 종료하면 기록이 저장되고 랭킹에 반영됩니다.</p>
+                <button id="btnSoloStart" class="primary">게임 시작</button>
+                <p id="soloMsg" class="msg"></p>
+            </div>
+
+            <div id="soloGame" class="hidden">
+                <div class="topbar">
+                    <div class="roomInfo">점수 <b id="soloScore">0</b></div>
+                    <div id="soloTimer" class="timer">--</div>
+                </div>
+                <div id="soloStatus" class="status"></div>
+                <div id="soloBoardWrap" class="boardWrap">
+                    <div id="soloBoard" class="board"></div>
+                    <div id="soloSelBox" class="selBox hidden"></div>
+                </div>
+                <div class="row center">
+                    <button id="btnSoloFinish">그만하기 (기록 제출)</button>
+                </div>
+            </div>
+
+            <div id="soloResult" class="hidden">
+                <h2>게임 결과</h2>
+                <div id="soloResultGrid" class="summaryGrid"></div>
+                <div class="row center">
+                    <button id="btnSoloAgain" class="primary">다시 하기</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== 대전 탭 ===== -->
+        <section id="tab-battle" class="card tabPanel hidden">
+            <div id="battleLobby">
+                <h2>2인 대전</h2>
+                <p class="hint">같은 보드에서 실시간으로 경쟁합니다. 한 방에서 여러 판을 이어서 하면 누적 점수가 쌓이고, 상대가 나가면 초기화됩니다.</p>
+                <button id="btnRoomCreate" class="primary">방 만들기</button>
+                <div class="divider">또는</div>
+                <div class="row">
+                    <input id="joinRoomCode" type="text" placeholder="방 코드 입력"/>
+                    <button id="btnRoomJoin">입장</button>
+                </div>
+                <p id="battleMsg" class="msg"></p>
+            </div>
+
+            <div id="battleRoom" class="hidden">
+                <div class="topbar">
+                    <div class="roomInfo">
+                        방 코드: <b id="roomCode"></b>
+                        <button id="btnCopyCode" class="tiny">복사</button>
+                        <span id="roundInfo" class="roundInfo"></span>
+                    </div>
+                    <div id="battleTimer" class="timer">--</div>
+                </div>
+
+                <div class="scoreboard">
+                    <div class="scorecard me">
+                        <div class="name" id="meName">나</div>
+                        <div class="score" id="meScore">0</div>
+                        <div class="total">누적 <b id="meTotal">0</b></div>
+                    </div>
+                    <div class="vs">VS</div>
+                    <div class="scorecard opp">
+                        <div class="name" id="oppName">상대 대기 중…</div>
+                        <div class="score" id="oppScore">0</div>
+                        <div class="total">누적 <b id="oppTotal">0</b></div>
+                    </div>
+                </div>
+
+                <div id="battleStatus" class="status">상대 플레이어를 기다리는 중…</div>
+
+                <div id="battleBoardWrap" class="boardWrap">
+                    <div id="battleBoard" class="board"></div>
+                    <div id="battleSelBox" class="selBox hidden"></div>
+                </div>
+
+                <div class="row center">
+                    <button id="btnRematch" class="primary hidden">다음 판 준비 완료</button>
+                    <button id="btnRoomLeave">방 나가기</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== 랭킹 탭 ===== -->
+        <section id="tab-ranking" class="card tabPanel hidden">
+            <div class="panelHead">
+                <h2>랭킹</h2>
+                <div class="segmented">
+                    <button class="seg active" data-period="alltime" type="button">전체</button>
+                    <button class="seg" data-period="weekly" type="button">주간</button>
+                </div>
+            </div>
+            <p class="hint">응답 출처: <span id="rankingSource" class="badge">-</span></p>
+            <div id="myRank" class="myRank hidden"></div>
+            <table class="table">
+                <thead><tr><th>순위</th><th>닉네임</th><th>점수</th></tr></thead>
+                <tbody id="rankingBody"></tbody>
+            </table>
+            <p id="rankingMsg" class="msg"></p>
+        </section>
+
+        <!-- ===== 내 기록 탭 ===== -->
+        <section id="tab-records" class="card tabPanel hidden">
+            <h2>내 기록</h2>
+            <div id="recordSummary" class="summaryGrid"></div>
+
+            <h3>솔로 기록</h3>
+            <table class="table">
+                <thead><tr><th>점수</th><th>최대 콤보</th><th>플레이 시간</th><th>일시</th></tr></thead>
+                <tbody id="recordsBody"></tbody>
+            </table>
+            <div class="row center">
+                <button id="btnMoreRecords" class="tiny hidden">더 보기</button>
+            </div>
+
+            <h3>대전 전적 <span id="matchSummary" class="subInfo"></span></h3>
+            <table class="table">
+                <thead><tr><th>결과</th><th>내 점수</th><th>상대</th><th>상대 점수</th><th>일시</th></tr></thead>
+                <tbody id="matchesBody"></tbody>
+            </table>
+            <div class="row center">
+                <button id="btnMoreMatches" class="tiny hidden">더 보기</button>
+            </div>
+
+            <p id="recordsMsg" class="msg"></p>
+        </section>
+
+        <!-- ===== 내 정보 탭 ===== -->
+        <section id="tab-profile" class="card tabPanel hidden">
+            <h2>내 정보</h2>
+            <dl id="profileInfo" class="profile"></dl>
+            <form id="nicknameForm" class="row">
+                <input id="newNickname" type="text" maxlength="12" placeholder="새 닉네임 (2~12자)" required/>
+                <button type="submit">닉네임 변경</button>
+            </form>
+            <p id="profileMsg" class="msg"></p>
+        </section>
+    </section>
+</div>
+
+<script src="/js/config.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/board.js"></script>
+<script src="/js/solo.js"></script>
+<script src="/js/battle.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

@@ -61,9 +61,10 @@ bin/
 *.env
 .env.*
 application-local.yml
+application-local.yaml
 application-local.properties
 application-secret.yml
-src/main/resources/application-prod.yml
+application-secret.yaml
 *.pem
 *.key
 *.p12
@@ -81,3 +82,6 @@ Thumbs.db
 *.tmp
 *.bak
 node_modules/
+
+# 개인 학습 로드맵 (커밋하지 않음)
+story.md

@@ -1,3 +1,12 @@
 spring:
   application:
     name: backend
+
+  profiles:
+    default: local
+
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
