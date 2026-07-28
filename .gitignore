@@ -1,0 +1,83 @@
+######################
+# Java / Compiled
+######################
+*.class
+*.log
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+replay_pid*
+
+######################
+# Gradle
+######################
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+######################
+# Maven
+######################
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+######################
+# IntelliJ IDEA
+######################
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+######################
+# Eclipse / STS
+######################
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+
+######################
+# VS Code
+######################
+.vscode/
+
+######################
+# 보안 / 환경설정 (중요)
+######################
+*.env
+.env.*
+application-local.yml
+application-local.properties
+application-secret.yml
+src/main/resources/application-prod.yml
+*.pem
+*.key
+*.p12
+*.jks
+
+######################
+# OS
+######################
+.DS_Store
+Thumbs.db
+
+######################
+# 기타
+######################
+*.tmp
+*.bak
+node_modules/
