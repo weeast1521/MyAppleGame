@@ -20,7 +20,7 @@ erDiagram
         bigint id PK
         varchar provider "LOCAL / KAKAO / NAVER"
         varchar provider_id "소셜 제공자 내 식별자 (LOCAL이면 NULL)"
-        varchar email "UNIQUE"
+        varchar email "UNIQUE, 소셜 미동의 시 NULL 가능 (LOCAL은 애플리케이션에서 필수 강제)"
         varchar password "BCrypt 해시 (LOCAL 전용, 소셜이면 NULL)"
         varchar nickname "UNIQUE"
         varchar role "USER / ADMIN"

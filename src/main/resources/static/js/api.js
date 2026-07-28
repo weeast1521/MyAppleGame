@@ -84,7 +84,7 @@ async function apiFetch(path, { method = 'GET', body, auth = true, _retried = fa
         }
         Auth.clear();
         window.dispatchEvent(new Event('auth:expired'));
-        throw new ApiError('AUTH4013', '로그인이 만료되었습니다. 다시 로그인해주세요.', 401);
+        throw new ApiError('AUTH401_3', '로그인이 만료되었습니다. 다시 로그인해주세요.', 401);
     }
 
     let payload = null;
