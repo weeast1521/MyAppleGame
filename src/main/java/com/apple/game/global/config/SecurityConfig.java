@@ -40,6 +40,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(SWAGGER_PATHS).permitAll()
                         .requestMatchers(STATIC_PATHS).permitAll()
+                        // logout은 인증 필요 — /api/auth/** permitAll보다 먼저 선언해야 이 규칙이 이긴다
+                        .requestMatchers("/api/auth/logout").authenticated()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/rankings/**").permitAll()
                         .anyRequest().authenticated())
