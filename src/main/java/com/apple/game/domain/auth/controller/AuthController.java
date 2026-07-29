@@ -1,6 +1,8 @@
 package com.apple.game.domain.auth.controller;
 
+import com.apple.game.domain.auth.dto.req.LoginReqDTO;
 import com.apple.game.domain.auth.dto.req.SignupReqDTO;
+import com.apple.game.domain.auth.dto.res.LoginResDTO;
 import com.apple.game.domain.auth.dto.res.SignupResDTO;
 import com.apple.game.domain.auth.service.AuthService;
 import com.apple.game.global.apiPayload.CustomResponse;
@@ -29,6 +31,17 @@ public class AuthController {
             @Valid @RequestBody SignupReqDTO.Signup request) {
         SignupResDTO.Signup result = authService.signup(request);
         CustomResponse<SignupResDTO.Signup> response = CustomResponse.onSuccess(GeneralSuccessCode.CREATED, result);
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
+
+    @Operation(summary = "일반 로그인", description = "기본 Local 로그인")
+    @PostMapping("/login")
+    public ResponseEntity<CustomResponse<LoginResDTO.Login>> login(
+            @Valid @RequestBody LoginReqDTO.Login request) {
+        LoginResDTO.Login result = authService.login(request);
+
+        CustomResponse<LoginResDTO.Login> response = CustomResponse.onSuccess(GeneralSuccessCode.OK, result);
 
         return ResponseEntity.status(response.getStatus()).body(response);
     }

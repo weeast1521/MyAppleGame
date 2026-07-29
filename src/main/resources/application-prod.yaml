@@ -11,7 +11,7 @@ spring:
       ddl-auto: validate
     show-sql: false
 
-  jwt:
-    secret: ${JWT_SECRET}
-    access-token-expiration: ${JWT_ACCESS_EXPIRATION:30m}
-    refresh-token-expiration: ${JWT_REFRESH_EXPIRATION:14d}
+jwt:
+  secret: ${JWT_SECRET}
+  access-token-expiration: ${JWT_ACCESS_EXPIRATION:30m}
+  refresh-token-expiration: ${JWT_REFRESH_EXPIRATION:14d}
