@@ -43,7 +43,6 @@ erDiagram
         bigint id PK
         bigint user_id FK
         int score "지운 사과 수"
-        int max_combo
         int cleared_count "10 조합 성공 횟수"
         int play_time_seconds "실제 플레이 시간"
         varchar board_seed "보드 재현용 시드"

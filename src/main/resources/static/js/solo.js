@@ -98,7 +98,6 @@ const Solo = (() => {
     function renderResult(r) {
         $('soloResultGrid').innerHTML = `
             <div class="stat"><div class="k">점수</div><div class="v">${r.score}</div></div>
-            <div class="stat"><div class="k">최대 콤보</div><div class="v">${r.maxCombo}</div></div>
             <div class="stat"><div class="k">개인 최고</div><div class="v">${r.isPersonalBest ? '🏆 갱신!' : '-'}</div></div>
             <div class="stat"><div class="k">전체 순위</div><div class="v">${r.allTimeRank != null ? r.allTimeRank + '위' : '-'}</div></div>`;
     }

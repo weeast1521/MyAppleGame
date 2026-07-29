@@ -233,7 +233,6 @@
 {
   "recordId": 42,
   "score": 86,
-  "maxCombo": 5,
   "isPersonalBest": true,
   "allTimeRank": 17
 }
@@ -256,7 +255,7 @@
 ```json
 {
   "records": [
-    { "recordId": 42, "score": 86, "maxCombo": 5, "playTimeSeconds": 118, "createdAt": "2026-07-28T14:00:00" }
+    { "recordId": 42, "score": 86, "playTimeSeconds": 118, "createdAt": "2026-07-28T14:00:00" }
   ],
   "nextCursor": 41,
   "hasNext": true

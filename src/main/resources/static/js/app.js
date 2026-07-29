@@ -193,12 +193,11 @@ const Records = {
             const rows = (r.records ?? []).map((rec) => `
                 <tr>
                     <td>${rec.score}</td>
-                    <td>${rec.maxCombo}</td>
                     <td>${rec.playTimeSeconds}초</td>
                     <td>${fmtDate(rec.createdAt)}</td>
                 </tr>`).join('');
             if (more) $('recordsBody').insertAdjacentHTML('beforeend', rows);
-            else $('recordsBody').innerHTML = rows || '<tr><td colspan="4">아직 기록이 없습니다.</td></tr>';
+            else $('recordsBody').innerHTML = rows || '<tr><td colspan="3">아직 기록이 없습니다.</td></tr>';
             this.recordsCursor = r.nextCursor;
             $('btnMoreRecords').classList.toggle('hidden', !r.hasNext);
         } catch (e) {
