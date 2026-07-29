@@ -9,6 +9,9 @@ import org.springframework.http.HttpStatus;
 @AllArgsConstructor
 public enum UserErrorCode implements BaseErrorCode {
 
+    // 404
+    NOT_FOUND(HttpStatus.NOT_FOUND, "USER404", "존재하지 않는 사용자입니다."),
+
     // 409
     NICKNAME_CONFLICT(HttpStatus.CONFLICT, "USER409", "이미 사용중인 닉네임입니다.");
 
