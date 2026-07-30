@@ -62,8 +62,15 @@ public class GameBoard {
         return true;
     }
 
+    // board는 clear()를 통해서만 수정이 되어야함. 읽기만 허용하기 위해 필요한 메서드
     public int[][] snapshot() {
-        return cells;
+        int[][] copy = new int[cells.length][];
+
+        for (int i = 0; i < cells.length; i++) {
+            copy[i] = cells[i].clone();
+        }
+
+        return copy;
     }
 }
 
