@@ -5,6 +5,13 @@ spring:
   profiles:
     default: local
 
+  data:
+    redis:
+      host: localhost      # prod에서는 환경변수/프로필로 override
+      port: 6379
+      timeout: 3s          # 명령 응답 대기 상한 — 기본값 60초는 Redis 다운 시 요청을 너무 오래 붙잡는다
+      connect-timeout: 3s  # 최초 커넥션 수립 대기 상한
+
   jpa:
     properties:
       hibernate:
