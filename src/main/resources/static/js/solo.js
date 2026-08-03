@@ -23,7 +23,7 @@ const Solo = (() => {
             onSelect: handleSelect,
         });
         $('btnSoloStart').addEventListener('click', start);
-        $('btnSoloAgain').addEventListener('click', () => showPanel('intro'));
+        $('btnSoloAgain').addEventListener('click', start);
     }
 
     function showPanel(name) {
@@ -47,6 +47,9 @@ const Solo = (() => {
             startedAt = Date.now();
             startTimer(session.timeLimitSeconds ?? 120);
         } catch (e) {
+            // soloMsg는 인트로 패널에만 있다. 결과 화면에서 '다시 하기'로 들어와 실패한 경우
+            // 인트로로 되돌려야 오류가 보이고, '게임 시작'으로 재시도할 수 있다.
+            showPanel('intro');
             $('soloMsg').textContent = e.message;
         }
     }
