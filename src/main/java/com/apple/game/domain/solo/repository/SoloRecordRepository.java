@@ -1,6 +1,7 @@
 package com.apple.game.domain.solo.repository;
 
 import com.apple.game.domain.solo.entity.SoloRecord;
+import com.apple.game.domain.user.entity.User;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -22,7 +23,7 @@ public interface SoloRecordRepository extends JpaRepository<SoloRecord, Long> {
     @Query("SELECT r FROM SoloRecord r "
             + "WHERE r.user.id = :userId AND r.id < :cursor "
             + "ORDER BY r.id DESC")
-    Slice<SoloRecord> findPageMyUserId(@Param("userId") Long userId, @Param("cursor") Long cursor, Pageable pageable);
+    Slice<SoloRecord> findPageByUserId(@Param("userId") Long userId, @Param("cursor") Long cursor, Pageable pageable);
 
     // best/count/avg를 쿼리 한 번으로 — 기록이 0건이면 MAX/AVG는 null, COUNT는 0
     @Query("SELECT MAX(r.score) AS bestScore, COUNT(r) AS totalGames, AVG(r.score) AS averageScore "
