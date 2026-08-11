@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@Table(name = "solo_record")
+@Table(name = "solo_record", indexes = @Index(name = "idx_solo_record_user_id", columnList = "user_id"))
 public class SoloRecord extends BaseTimeEntity {
 
     @Id
