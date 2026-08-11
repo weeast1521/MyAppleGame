@@ -13,10 +13,13 @@ import com.apple.game.domain.user.exception.UserErrorCode;
 import com.apple.game.domain.user.repository.UserRepository;
 import com.apple.game.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -26,6 +29,9 @@ public class SoloGameService {
 
     private static final int TIME_LIMIT_SECONDS = 120;
     private static final int SESSION_TTL_SECONDS = TIME_LIMIT_SECONDS + 30;
+
+    private static final int DEFAULT_SIZE = 20;
+    private static final int MAX_SIZE = 100;
 
     private final SoloGameRepository soloGameRepository;
     private final SoloRecordRepository soloRecordRepository;
@@ -96,5 +102,44 @@ public class SoloGameService {
         int allTimeRank = (int) soloRecordRepository.countUsersWithScoreAbove(score) + 1;
 
         return new SoloResDTO.Finish(record.getId(), score, isPersonalBest, allTimeRank);
+    }
+
+    @Transactional(readOnly = true)
+    public SoloResDTO.RecordPage getMyRecords(Long userId, Long cursor, Integer size) {
+        int pageSize = normalizeSize(size);
+
+        long effectiveCursor = (cursor == null) ? Long.MAX_VALUE : cursor;
+
+        Slice<SoloRecord> slice =
+                soloRecordRepository.findPageByUserId(userId, effectiveCursor, PageRequest.of(0, pageSize));
+
+        List<SoloRecord> page = slice.getContent();
+        Long nextCursor = slice.hasNext() ? page.get(page.size() - 1).getId() : null;
+
+        List<SoloResDTO.RecordItem> records = page.stream()
+                .map(r -> new SoloResDTO.RecordItem(
+                        r.getId(), r.getScore(), r.getPlayTimeSeconds(), r.getCreatedAt()))
+                .toList();
+
+        return new SoloResDTO.RecordPage(records, nextCursor, slice.hasNext());
+    }
+
+    @Transactional(readOnly = true)
+    public SoloResDTO.Summary getSummary(Long userId) {
+        SoloRecordRepository.SummaryProjection agg = soloRecordRepository.aggregateByUserId(userId);
+
+        if (agg.getTotalGames() == 0) {
+            return new SoloResDTO.Summary(null, 0, null, null);
+        }
+
+        int allTimeRank = (int) soloRecordRepository.countUsersWithScoreAbove(agg.getBestScore()) + 1;
+        double averageScore = Math.round(agg.getAverageScore() * 10) / 10.0;
+
+        return new SoloResDTO.Summary(agg.getBestScore(), agg.getTotalGames(), averageScore, allTimeRank);
+    }
+
+    private int normalizeSize(Integer size) {
+        if (size == null || size <= 0) return DEFAULT_SIZE;
+        return Math.min(size, MAX_SIZE);
     }
 }

@@ -51,4 +51,32 @@ public class SoloGameController {
 
         return ResponseEntity.status(response.getStatus()).body(response);
     }
+
+    @Operation(summary = "내 기록 조회 (커서 페이지네이션)",
+            description = "cursor 미전달 시 최신 기록부터, 전달 시 해당 id 이전 기록을 size개 반환한다.")
+    @GetMapping("/records/me")
+    public ResponseEntity<CustomResponse<SoloResDTO.RecordPage>> getMyRecords(
+            @AuthenticationPrincipal CustomUserDetails userDetails,
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        SoloResDTO.RecordPage result = soloGameService.getMyRecords(userDetails.getUserId(), cursor, size);
+
+        CustomResponse<SoloResDTO.RecordPage> response = CustomResponse.onSuccess(GeneralSuccessCode.OK, result);
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
+
+    @Operation(summary = "내 통계 요약",
+            description = "최고 점수 / 총 게임 수 / 평균 점수 / 전체 순위를 반환한다.")
+    @GetMapping("/records/me/summary")
+    public ResponseEntity<CustomResponse<SoloResDTO.Summary>> getSummary(
+            @AuthenticationPrincipal CustomUserDetails userDetails
+    ) {
+        SoloResDTO.Summary result = soloGameService.getSummary(userDetails.getUserId());
+
+        CustomResponse<SoloResDTO.Summary> response = CustomResponse.onSuccess(GeneralSuccessCode.OK, result);
+
+        return ResponseEntity.status(response.getStatus()).body(response);
+    }
 }
