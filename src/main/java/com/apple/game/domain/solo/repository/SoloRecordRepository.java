@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 public interface SoloRecordRepository extends JpaRepository<SoloRecord, Long> {
@@ -37,6 +39,35 @@ public interface SoloRecordRepository extends JpaRepository<SoloRecord, Long> {
         Double getAverageScore();
     }
 
-    // 메서드 명이 너무 길어져 직관적이지 못함
-    // List<SoloRecord> findByUserIdAndIdLessThanOrderByIdDesc(Long userId, Long cursor, Pageable pageable);
+    // ---------------- Ranking 조회 -------------------
+
+    @Query("SELECT u.id AS userId, u.nickname AS nickname, MAX(r.score) AS bestScore "
+            + "FROM SoloRecord r JOIN r.user u "
+            + "GROUP BY u.id, u.nickname "
+            + "ORDER BY max(r.score) DESC")
+    List<RankingRow> findAllTimeRanking(Pageable pageable);
+
+    @Query("select u.id AS userId, u.nickname AS nickname, MAX(r.score) AS bestScore "
+            + "FROM SoloRecord r JOIN r.user u "
+            + "WHERE r.createdAt >= :from "
+            + "GROUP BY u.id, u.nickname "
+            + "ORDER BY max(r.score) DESC")
+    List<RankingRow> findWeeklyRanking(@Param("from") LocalDateTime from, Pageable pageable);
+
+    // 내 주간 최고점 — 기록 없으면 null
+    @Query("SELECT MAX(r.score) AS bestScore "
+            + "FROM SoloRecord r "
+            + "WHERE r.user.id = :userId AND r.createdAt >= :from")
+    Integer findMyWeeklyBestScore(@Param("userId") Long userId, @Param("from") LocalDateTime from);
+
+    // 주간 버전의 countUsersWithScoreAbove — 내 순위 계산용
+    @Query("SELECT COUNT(DISTINCT r.user.id) FROM SoloRecord r "
+            + "WHERE r.createdAt >= :from AND r.score > :score")
+    long findMyWeeklyRanking(@Param("from") LocalDateTime from, @Param("score") int score);
+
+    interface RankingRow {
+        Long getUserId();
+        String getNickname();
+        Integer getBestScore();
+    }
 }
