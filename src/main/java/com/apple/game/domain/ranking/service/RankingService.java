@@ -5,6 +5,7 @@ import com.apple.game.domain.ranking.entity.RankingPeriod;
 import com.apple.game.domain.solo.entity.SoloRecord;
 import com.apple.game.domain.solo.repository.SoloRecordRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RankingService {
@@ -26,6 +28,8 @@ public class RankingService {
 
     @Transactional(readOnly = true)
     public RankingResDTO.RankingPage getRanking(Long userId, String periodParam, int offset, int size) {
+        long startedAt = System.currentTimeMillis();
+
         RankingPeriod period = RankingPeriod.from(periodParam);
         // 현재 로컬에서는 괜찮지만 EC2의 경우 UTC가 기본이기에 따로 설정이 필요
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
@@ -33,7 +37,12 @@ public class RankingService {
         offset = Math.max(0, Math.min(offset, MAX_RANGE));
         size = Math.max(1, Math.min(size, MAX_RANGE - offset));
 
-        return loadFromDb(period, today, userId, offset, size);
+        RankingResDTO.RankingPage result = loadFromDb(period, today, userId, offset, size);
+
+        log.info("랭킹 조회 period={} source={} elapsed={}ms",
+                period, result.source(), System.currentTimeMillis() - startedAt);
+
+        return result;
     }
 
     private RankingResDTO.RankingPage loadFromDb(
