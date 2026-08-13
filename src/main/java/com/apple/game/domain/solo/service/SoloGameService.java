@@ -1,5 +1,7 @@
 package com.apple.game.domain.solo.service;
 
+import com.apple.game.domain.ranking.entity.RankingPeriod;
+import com.apple.game.domain.ranking.repository.RankingRedisRepository;
 import com.apple.game.domain.solo.dto.req.SoloReqDTO;
 import com.apple.game.domain.solo.dto.res.SoloResDTO;
 import com.apple.game.domain.solo.entity.SoloRecord;
@@ -13,16 +15,20 @@ import com.apple.game.domain.user.exception.UserErrorCode;
 import com.apple.game.domain.user.repository.UserRepository;
 import com.apple.game.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Slice;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class SoloGameService {
@@ -36,6 +42,7 @@ public class SoloGameService {
     private final SoloGameRepository soloGameRepository;
     private final SoloRecordRepository soloRecordRepository;
     private final UserRepository userRepository;
+    private final RankingRedisRepository rankingRedisRepository;
 
     public SoloResDTO.Start start(Long userId) {
         String gameSessionId = UUID.randomUUID().toString();
@@ -98,6 +105,17 @@ public class SoloGameService {
 
         SoloRecord record = soloRecordRepository.save(SoloRecord.create(
                 user, score, clearedCount, playTimeSeconds, String.valueOf(session.getBoardSeed())));
+
+        // 랭킹 캐시 갱신 — 두 키(alltime/weekly)에 ZADD GT, GT이기에 기존 최고점보다 낮은 점수는 알아서 무시
+        try {
+            LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+            rankingRedisRepository.updateScore(RankingPeriod.ALLTIME.redisKey(today), userId, score, false);
+            rankingRedisRepository.updateScore(RankingPeriod.WEEKLY.redisKey(today), userId, score, true);
+        } catch (Exception e) {
+            // Redis 장애가 기록 저장(DB 커밋)을 실패시키면 안되기에 log로만 남긴다
+            // 여기서 생긴 DB-캐시 불일치는 키가 사라진 뒤 warm-up이 복구한다
+            log.warn("랭킹 캐시 갱신 실패 — warm-up 시 복구됨", e);
+        }
 
         int allTimeRank = (int) soloRecordRepository.countUsersWithScoreAbove(score) + 1;
 
