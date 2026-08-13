@@ -118,6 +118,9 @@ function bindAuth() {
 /* ---------------- 랭킹 탭 ---------------- */
 const Ranking = {
     period: 'alltime',
+    rows: [],        // 한 번에 받아둔 최대 100등 스냅샷
+    shown: 0,        // 현재 화면에 펼친 개수
+    PAGE: 20,
 
     bind() {
         document.querySelectorAll('.seg').forEach((b) => {
@@ -127,12 +130,15 @@ const Ranking = {
                 this.load();
             });
         });
+        $('btnMoreRanking').addEventListener('click', () => this.reveal());
     },
 
     async load() {
         $('rankingMsg').textContent = '';
         try {
-            const r = await apiFetch(`/api/rankings/solo?period=${this.period}&offset=0&size=20`);
+            // 100등까지 한 번에 받는다 — 순위는 요청 사이에 재배열될 수 있어
+            // offset 페이징으로 나눠 받으면 중복/누락이 생기므로 스냅샷 방식이 정확하다
+            const r = await apiFetch(`/api/rankings/solo?period=${this.period}&offset=0&size=100`);
             $('rankingSource').textContent = r.source ?? '-';
             if (r.myRank) {
                 $('myRank').classList.remove('hidden');
@@ -140,16 +146,27 @@ const Ranking = {
             } else {
                 $('myRank').classList.add('hidden');
             }
-            $('rankingBody').innerHTML = (r.rankings ?? []).map((row) => `
-                <tr>
-                    <td>${row.rank}</td>
-                    <td>${escapeHtml(row.nickname)}</td>
-                    <td>${row.score}</td>
-                </tr>`).join('') || '<tr><td colspan="3">아직 기록이 없습니다.</td></tr>';
+            this.rows = r.rankings ?? [];
+            this.shown = 0;
+            $('rankingBody').innerHTML = this.rows.length ? '' : '<tr><td colspan="3">아직 기록이 없습니다.</td></tr>';
+            this.reveal();   // 첫 20등 펼치기
         } catch (e) {
             $('rankingBody').innerHTML = '';
             $('rankingMsg').textContent = e.message;
         }
+    },
+
+    // 더보기 — 서버 요청 없이 받아둔 스냅샷을 20등씩 펼친다
+    reveal() {
+        const next = this.rows.slice(this.shown, this.shown + this.PAGE);
+        $('rankingBody').insertAdjacentHTML('beforeend', next.map((row) => `
+            <tr>
+                <td>${row.rank}</td>
+                <td>${escapeHtml(row.nickname)}</td>
+                <td>${row.score}</td>
+            </tr>`).join(''));
+        this.shown += next.length;
+        $('btnMoreRanking').classList.toggle('hidden', this.shown >= this.rows.length);
     },
 };
 
