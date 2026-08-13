@@ -295,7 +295,6 @@
 **Response `result`**
 ```json
 {
-  "period": "alltime",
   "source": "redis",
   "myRank": { "rank": 17, "score": 112 },
   "rankings": [
