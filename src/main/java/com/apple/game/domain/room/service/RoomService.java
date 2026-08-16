@@ -39,26 +39,25 @@ public class RoomService {
         throw new CustomException(RoomErrorCode.ROOM_CODE_EXHAUSTED);
     }
 
-    // 1차 구현: check(조회·검사)와 act(쓰기) 사이에 틈이 있다
+    // 검사 + 입장을 Lua 스크립트 하나로 통합해 check와 act 사이의 틈이 사리짐
     // 방 존재여부, 게임중 여부, 자기방 입장
     public RoomResDTO.Join join(Long userId, String roomCode) {
+        String result = roomRedisRepository.joinAtomic(roomCode, userId);
+
+        switch (result) {
+            case "OK" -> {}
+            case "NOT_FOUND" -> throw new CustomException(RoomErrorCode.ROOM_NOT_FOUND);
+            case "PLAYING" -> throw new CustomException(RoomErrorCode.ROOM_PLAYING);
+            default -> throw new CustomException(RoomErrorCode.ROOM_FULL);
+        }
+
         Map<Object, Object> room = roomRedisRepository.findRoom(roomCode);
-        if (room.isEmpty()) throw new CustomException(RoomErrorCode.ROOM_NOT_FOUND);
-
-        String status = (String) room.get("status");
-        if (RoomStatus.PLAYING.name().equals(status)) throw new CustomException(RoomErrorCode.ROOM_PLAYING);
-
-        String hostId = (String) room.get("hostId");
-        if (String.valueOf(userId).equals(hostId)) throw new CustomException(RoomErrorCode.ROOM_FULL); // 자기 방 입장 방지
-
-        if (room.get("guestId") != null) throw new CustomException(RoomErrorCode.ROOM_FULL);
-
-        roomRedisRepository.setGuestUnsafe(roomCode, userId);
+        Long hostId = Long.valueOf((String) room.get("hostId"));
 
         return new RoomResDTO.Join(
                 roomCode,
-                RoomStatus.READY.name(),
-                toPlayerInfo(Long.valueOf(hostId)),
+                (String) room.get("status"),
+                toPlayerInfo(hostId),
                 toPlayerInfo(userId));
     }
 
