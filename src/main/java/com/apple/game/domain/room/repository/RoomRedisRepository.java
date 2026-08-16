@@ -3,12 +3,12 @@ package com.apple.game.domain.room.repository;
 import com.apple.game.domain.room.entity.RoomStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Repository;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 @Repository
 @RequiredArgsConstructor
@@ -20,7 +20,35 @@ public class RoomRedisRepository {
 
     public static String roomKey(String code) { return "room:" + code; }
     public static String scoresKey(String code) { return "room:" + code + ":scores"; }
-    public static String lockKey(String code) { return "room:" + code + ":lock"; }
+
+    // Lua 스크립트 이용
+    // EXISTS room:ABC123, HGET room:ABC123 status, HSET room:ABC123 guestId id
+    private static final DefaultRedisScript<String> JOIN_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('EXISTS', KEYS[1]) == 0 then
+                return 'NOT_FOUND'
+            end
+            if redis.call('HGET', KEYS[1], 'status') == 'PLAYING' then
+                return 'PLAYING'
+            end
+            if redis.call('HGET', KEYS[1], 'hostId') == ARGV[1] then
+                return 'SELF'
+            end
+            if redis.call('HEXISTS', KEYS[1], 'guestId') == 1 then
+                return 'FULL'
+            end
+            redis.call('HSET', KEYS[1], 'guestId', ARGV[1])
+            redis.call('HSET', KEYS[1], 'status', ARGV[2])
+            return 'OK'
+            """, String.class);
+
+    // 3차: check + act를 Lua로 원자화 -> 동시 join 시 정확히 한 명만 OK를 받는다
+    public String joinAtomic(String code, Long userId) {
+        return redisTemplate.execute(
+                JOIN_SCRIPT,
+                List.of(roomKey(code)), // keys 배열 : KEYS[1] = "room:code"
+                String.valueOf(userId), // ARGV 배열 : ARGV[1] = userId, ARGV[2] = "READY"
+                RoomStatus.READY.name());
+    }
 
     // 방 생성 -> HSETNX(putIfAbsent)로 hostId 필드를 먼저 선점.
     // 같은 코드가 이미 존재하면 false -> 서비스에서 새 코드로 재시도
@@ -40,14 +68,6 @@ public class RoomRedisRepository {
     // HGETALL room:{code} -> 방이 없으면 빈 Map
     public Map<Object, Object> findRoom(String code) {
         return redisTemplate.opsForHash().entries(roomKey(code));
-    }
-
-    // 1차: 락 없는 guest 입장 -> 검사(check)는 서비스에서 하고 여기선 그냥 쓴다
-    // 두 스레드가 동시에 "guestId 없음"을 읽으면 둘 다 여기 도달한다 -> 정원 초과
-    public void setGuestUnsafe(String code, Long guestId) {
-        String key = roomKey(code);
-        redisTemplate.opsForHash().put(key, "guestId", String.valueOf(guestId));
-        redisTemplate.opsForHash().put(key, "status", RoomStatus.READY.name());
     }
 
     // 방 삭제(혼자 있던 방에서 나가는 경우) -> 누적 점수 키도 같이 정리
