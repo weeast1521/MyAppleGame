@@ -9,6 +9,8 @@ import com.apple.game.global.exception.CustomException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -25,6 +27,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @ActiveProfiles("local") // 로컬 Redis(6379)·MySQL이 떠 있어야 한다
 class RoomJoinConcurrencyTest {
+
+    private static final Logger log = LoggerFactory.getLogger(RoomJoinConcurrencyTest.class);
 
     @Autowired RoomService roomService;
     @Autowired RoomRedisRepository roomRedisRepository;
@@ -60,11 +64,15 @@ class RoomJoinConcurrencyTest {
         for (Long userId : List.of(guestA.getId(), guestB.getId())) {
             executor.submit(() -> {
                 try {
+                    log.info("[user={}] 스레드 시작, 출발선 대기", userId);
                     ready.countDown();
                     start.await();                       // 출발선에서 대기
+                    log.info("[user={}] 출발! join 호출 직전", userId);
                     roomService.join(userId, roomCode);
+                    log.info("[user={}] join 성공", userId);
                     success.incrementAndGet();
                 } catch (CustomException e) {
+                    log.info("[user={}] join 실패: {}", userId, e.getMessage());
                     conflict.incrementAndGet();          // ROOM409 기대
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
@@ -75,8 +83,10 @@ class RoomJoinConcurrencyTest {
         }
 
         ready.await();
+        log.info("두 스레드 준비 완료, 출발 신호 발사");
         start.countDown();                               // 동시 출발!
         done.await(10, TimeUnit.SECONDS);
+        log.info("전원 완료: success={}, conflict={}", success.get(), conflict.get());
         executor.shutdown();
 
         // 1차(락 없음) 구현에선 success == 2 로 여기서 실패한다 → 레이스 재현
