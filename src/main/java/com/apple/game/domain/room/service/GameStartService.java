@@ -55,7 +55,7 @@ public class GameStartService {
         roomRedisRepository.saveBoard(roomCode, board);
 
         // Lua가 START를 반환했다면 방 상태는 이미 PLAYING — host/guest가 모두 존재한다
-        Map<Object, Object> room = roomRedisRepository. findRoom(roomCode);
+        Map<Object, Object> room = roomRedisRepository.findRoom(roomCode);
         Long hostId = Long.valueOf((String) room.get("hostId"));
         Long guestId = Long.valueOf((String) room.get("guestId"));
 
