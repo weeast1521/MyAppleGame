@@ -77,10 +77,6 @@ button.tiny { padding: 2px 8px; font-size: .75rem; }
 /* ===== 인증 ===== */
 .switchLine { font-size: .85rem; color: var(--muted); text-align: center; margin: 14px 0 0; }
 .switchLine a { color: var(--primary); text-decoration: none; }
-.social { flex: 1; border: none; font-weight: 700; }
-.social.kakao { background: #fee500; color: #191600; }
-.social.naver { background: #03c75a; color: #fff; }
-
 /* ===== 헤더/탭 ===== */
 .appHeader {
     display: flex;

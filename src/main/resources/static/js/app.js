@@ -85,27 +85,6 @@ function bindAuth() {
         }
     });
 
-    $('btnKakao').addEventListener('click', () => {
-        const { clientId, redirectUri } = OAUTH_CONFIG.kakao;
-        if (!clientId) return authError('js/config.js 에 카카오 REST API 키를 설정하세요.');
-        location.href = 'https://kauth.kakao.com/oauth/authorize'
-            + `?client_id=${clientId}`
-            + `&redirect_uri=${encodeURIComponent(redirectUri)}`
-            + '&response_type=code';
-    });
-
-    $('btnNaver').addEventListener('click', () => {
-        const { clientId, redirectUri } = OAUTH_CONFIG.naver;
-        if (!clientId) return authError('js/config.js 에 네이버 Client ID를 설정하세요.');
-        const state = crypto.randomUUID();
-        sessionStorage.setItem('naver_oauth_state', state);
-        location.href = 'https://nid.naver.com/oauth2.0/authorize'
-            + `?client_id=${clientId}`
-            + `&redirect_uri=${encodeURIComponent(redirectUri)}`
-            + '&response_type=code'
-            + `&state=${state}`;
-    });
-
     $('btnLogout').addEventListener('click', async () => {
         try { await apiFetch('/api/auth/logout', { method: 'POST' }); } catch { /* 무시 */ }
         Battle.cleanup();
