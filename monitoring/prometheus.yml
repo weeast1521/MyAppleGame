@@ -1,0 +1,20 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # 앱 메트릭 — blue/green 둘 다 등록해 두면, 꺼져 있는 색은 down으로 보일 뿐이고
+  # 배포 전환 시 새 색의 메트릭이 끊김 없이 이어진다
+  - job_name: app
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["app_blue:8080", "app_green:8080"]
+
+  # VM 자체 지표 (CPU·메모리·디스크·네트워크)
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # Prometheus 자기 자신
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

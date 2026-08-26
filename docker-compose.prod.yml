@@ -1,0 +1,110 @@
+# 프로덕션 (VM: /opt/applegame)
+#   최초 기동:  docker compose -f docker-compose.prod.yml --profile blue up -d
+#   배포:       scripts/deploy.sh <이미지태그>   (blue-green 무중단 전환)
+# 시크릿은 같은 디렉터리의 .env 에서 읽는다 (.env.example 참고).
+# 외부에 여는 포트는 nginx의 80 하나뿐 — 나머지는 Docker 내부 네트워크 전용.
+
+# blue/green이 공유하는 앱 설정. YAML 앵커로 중복 제거.
+x-app: &app
+  image: ghcr.io/weeast1521/myapplegame:${APP_TAG:-latest}
+  environment:
+    SPRING_PROFILES_ACTIVE: prod
+    DB_URL: ${DB_URL}
+    DB_USERNAME: ${DB_USERNAME}
+    DB_PASSWORD: ${DB_PASSWORD}
+    JWT_SECRET: ${JWT_SECRET}
+    # 15GB 중 앱 힙 2GB — 설계서 §3 메모리 예산
+    JAVA_TOOL_OPTIONS: "-Xmx2g"
+  depends_on:
+    mysql:
+      condition: service_healthy
+    redis:
+      condition: service_started
+  restart: unless-stopped
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: apple-nginx
+    ports:
+      - "80:80"
+    volumes:
+      # 디렉터리째 마운트 — deploy.sh의 sed -i(active_upstream.inc 교체)가 반영되게
+      - ./nginx:/etc/nginx/conf.d:ro
+    depends_on:
+      - grafana
+    restart: unless-stopped
+
+  # blue/green 두 색 중 한쪽만 기동한다 (--profile blue|green).
+  # 프로필이 없으면 `up -d` 한 번에 둘 다 떠서 메모리를 2배로 먹는다.
+  app_blue:
+    <<: *app
+    container_name: apple-app-blue
+    profiles: ["blue"]
+
+  app_green:
+    <<: *app
+    container_name: apple-app-green
+    profiles: ["green"]
+
+  mysql:
+    image: mysql:8.4
+    container_name: apple-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: applegame
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DB_PASSWORD}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: apple-redis
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.53.4
+    container_name: apple-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: apple-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      # 3000 포트를 열지 않고 nginx의 /grafana/ 경로로만 접근하기 위한 설정 짝
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    container_name: apple-node-exporter
+    # 컨테이너가 아니라 호스트(VM)의 지표를 읽도록 호스트 FS를 읽기 전용 마운트
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  redis-data:
+  prometheus-data:
+  grafana-data:
