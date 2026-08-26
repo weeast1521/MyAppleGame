@@ -1,5 +1,11 @@
 # 시크릿은 전부 환경변수로 주입 — 이 파일에는 실제 값을 넣지 않습니다.
 spring:
+  data:
+    redis:
+      # Docker 내부 네트워크의 서비스 이름이 기본값. 컨테이너 밖에서 띄울 때만 override.
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -15,6 +21,11 @@ spring:
   # 최초 배포 시 빈 DB에 테이블이 없어 기동 실패하던 문제를 Flyway가 해결.
   flyway:
     enabled: true
+
+# Nginx 뒤에서 동작하므로 X-Forwarded-* 헤더를 신뢰해야
+# 리다이렉트 URL·스킴(추후 https)이 프록시 바깥 기준으로 올바르게 만들어진다.
+server:
+  forward-headers-strategy: framework
 
 jwt:
   secret: ${JWT_SECRET}
