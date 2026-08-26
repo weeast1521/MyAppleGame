@@ -24,7 +24,7 @@ public class SecurityConfig {
     };
 
     private static final String[] STATIC_PATHS = {
-            "/", "/index.html", "/js/**", "/oauth/**", "/style.css"
+            "/", "/index.html", "/js/**", "/style.css"
     };
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
