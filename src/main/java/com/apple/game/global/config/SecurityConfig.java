@@ -45,6 +45,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/rankings/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
+                        // 내부망 전용(외부는 Nginx가 /actuator/** 차단): 배포 헬스체크 + Prometheus 수집
+                        .requestMatchers("/actuator/health", "/actuator/prometheus").permitAll()
                         .anyRequest().authenticated())
                 // 인증 실패(401)를 CustomResponse JSON으로 내려주는 EntryPoint
                 .exceptionHandling(e -> e.authenticationEntryPoint(jwtAuthenticationEntryPoint))

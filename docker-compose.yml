@@ -1,11 +1,14 @@
 # 로컬 개발용 인프라 (MySQL + Redis)
 # 접속 정보는 src/main/resources/application-local.yaml 과 일치해야 한다.
+# 비밀번호는 .env 로 분리 (.env.example 참고) — 없으면 기본값 applegame 사용.
 services:
   mysql:
-    image: mysql:8
+    # 프로덕션(docker-compose.prod.yml)과 동일한 8.4 LTS로 고정.
+    # latest(:8)를 따라가면 로컬-프로드 버전이 어긋나거나 자동 메이저 업그레이드로 볼륨이 깨질 수 있다.
+    image: mysql:8.4
     container_name: apple-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: applegame
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-applegame}
       MYSQL_DATABASE: applegame
     ports:
       # 로컬 Windows에 MySQL80 서비스가 3306을 점유 중이라 호스트 쪽은 3307 사용
@@ -13,7 +16,7 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-papplegame"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-applegame}"]
       interval: 5s
       timeout: 3s
       retries: 10

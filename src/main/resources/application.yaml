@@ -17,3 +17,18 @@ spring:
       hibernate:
         format_sql: true
     open-in-view: false
+
+  # 마이그레이션은 prod에서만 실행 (application-prod.yaml에서 켠다).
+  # 로컬은 ddl-auto: update가 스키마를 관리하던 기존 흐름 유지 —
+  # 엔티티 변경 시 prod용 V{n}__*.sql 추가를 잊으면 CI(prod 프로필 테스트)가 잡아준다.
+  flyway:
+    enabled: false
+
+# 관리 엔드포인트는 health(로드밸런서·배포 헬스체크)와 prometheus(메트릭 수집)만 노출.
+# 나머지(env, beans, heapdump …)는 내부 정보 유출 통로라 열지 않는다.
+# 프로덕션에서는 Nginx가 /actuator/** 외부 접근을 다시 한 번 차단한다(이중 방어).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
