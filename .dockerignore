@@ -1,0 +1,7 @@
+# 빌드 컨텍스트 최소화 — Dockerfile이 COPY하는 것(gradle*, src)만 있으면 된다
+*
+!gradlew
+!settings.gradle
+!build.gradle
+!gradle/
+!src/
