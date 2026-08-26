@@ -59,10 +59,6 @@ public class User extends BaseTimeEntity {
         return new User(Provider.LOCAL, null, email, encodedPassword, nickname);
     }
 
-    public static User createSocialUser(Provider provider, String providerId, String email, String nickname) {
-        return new User(provider, providerId, email, null, nickname);
-    }
-
     // PATCH /api/users/me/nickname
     public void changeNickname(String nickname) {
         this.nickname = nickname;
