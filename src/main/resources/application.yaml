@@ -17,3 +17,12 @@ spring:
       hibernate:
         format_sql: true
     open-in-view: false
+
+# 관리 엔드포인트는 health(로드밸런서·배포 헬스체크)와 prometheus(메트릭 수집)만 노출.
+# 나머지(env, beans, heapdump …)는 내부 정보 유출 통로라 열지 않는다.
+# 프로덕션에서는 Nginx가 /actuator/** 외부 접근을 다시 한 번 차단한다(이중 방어).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
