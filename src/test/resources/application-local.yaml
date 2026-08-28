@@ -1,0 +1,22 @@
+# 테스트 전용 local 프로필 설정 — @ActiveProfiles("local")을 쓰는 테스트가
+# gitignore된 개인 application-local.yaml 없이도(CI, 새 clone) 돌 수 있게 커밋해 둔다.
+#
+# 우선순위: 테스트 클래스패스가 main보다 앞서므로, 테스트에서는 항상 이 파일이
+# 로드된다. 값이 개인 설정과 다르면 이 파일을 기준으로 맞출 것.
+# 모든 값은 환경변수로 덮어쓸 수 있다 — CI는 서비스 컨테이너 주소(DB_URL 등)를 주입한다.
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3307/applegame?serverTimezone=Asia/Seoul&characterEncoding=UTF-8&rewriteBatchedStatements=true}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:applegame}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+jwt:
+  # 테스트 전용 더미 (base64, 256비트 이상) — 실제 서비스 값과 무관
+  secret: ${JWT_SECRET:Y2ktb25seS1kdW1teS1qd3Qtc2VjcmV0LW5vdC11c2VkLWFueXdoZXJlLW91dHNpZGUtZ2l0aHViLWFjdGlvbnMtMDAwMQ==}
+  access-token-expiration: 30m
+  refresh-token-expiration: 14d
