@@ -64,6 +64,8 @@ bin/
 application-local.yml
 application-local.yaml
 application-local.properties
+# 테스트 전용 local 설정은 커밋 대상 (CI·새 clone에서도 테스트가 돌아야 함)
+!src/test/resources/application-local.yaml
 application-secret.yml
 application-secret.yaml
 *.pem
