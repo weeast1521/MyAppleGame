@@ -86,6 +86,9 @@ Thumbs.db
 *.bak
 node_modules/
 
+# VM 로컬 배포 상태 — 현재 활성 색. 템플릿은 nginx/active_upstream.inc.example
+nginx/active_upstream.inc
+
 # 개인 학습 로드맵 (커밋하지 않음)
 story.md
 docs/refactor.md
