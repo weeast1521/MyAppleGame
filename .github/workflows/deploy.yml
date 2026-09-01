@@ -101,4 +101,11 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           # 헬스 대기까지 스크립트가 하므로 여유 있게
           command_timeout: 10m
-          script: /opt/applegame/scripts/deploy.sh ${{ github.sha }}
+          # 배포 설정(compose·nginx·scripts)은 리포가 원본이므로 VM 사본을 먼저 맞춘다.
+          # --ff-only: VM에서 손으로 고친 커밋이 있으면 병합하지 않고 실패시켜 드러낸다.
+          # .env·active_upstream.inc는 git이 추적하지 않아 pull에 영향받지 않는다.
+          script: |
+            set -e
+            cd /opt/applegame
+            git pull --ff-only origin main
+            scripts/deploy.sh ${{ github.sha }}
