@@ -26,6 +26,11 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0'
+
+	// Step 10 2차(분산 락) 비교용. starter 대신 코어만 쓴다 —
+	// redisson-spring-boot-starter는 RedisConnectionFactory를 Redisson 구현으로 갈아끼워
+	// 기존 StringRedisTemplate(Lettuce) 경로까지 바꿔버리므로, RLock만 필요한 지금은 과하다.
+	implementation 'org.redisson:redisson:3.50.0'
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 
 	implementation 'org.flywaydb:flyway-core'

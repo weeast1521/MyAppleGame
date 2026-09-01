@@ -52,6 +52,7 @@ public class GameStartService {
         GameMatch match = gameMatchRepository.save(GameMatch.start(roomCode, String.valueOf(seed)));
 
         int[][] board = BoardGenerator.generate(seed);
+        roomRedisRepository.resetRoundKeys(roomCode); // 이전 판의 scores·requestId 정리 (연전 시 점수가 이월되지 않게)
         roomRedisRepository.saveBoard(roomCode, board);
 
         // Lua가 START를 반환했다면 방 상태는 이미 PLAYING — host/guest가 모두 존재한다

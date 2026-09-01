@@ -48,6 +48,7 @@ public class RoomService {
             case "OK" -> {}
             case "NOT_FOUND" -> throw new CustomException(RoomErrorCode.ROOM_NOT_FOUND);
             case "PLAYING" -> throw new CustomException(RoomErrorCode.ROOM_PLAYING);
+            case "SELF" -> throw new CustomException(RoomErrorCode.ROOM_SELF_JOIN); // host가 자기 방에 join — FULL로 뭉개면 "가득 참"으로 오해한다
             default -> throw new CustomException(RoomErrorCode.ROOM_FULL);
         }
 
