@@ -32,3 +32,10 @@ management:
     web:
       exposure:
         include: health,prometheus
+
+# 대전 사과 제거의 원자성 확보 전략 (Step 10). NO_LOCK | REDISSON_LOCK | LUA
+# 세 구현을 모두 남겨두고 여기서 고른다 — 비교 실험은 docs/clear_concurrency.md 참고.
+# NO_LOCK은 중복 득점 버그 재현용이므로 실제 플레이에서는 쓰지 않는다.
+game:
+  clear:
+    strategy: LUA
