@@ -29,7 +29,8 @@ services:
     ports:
       - "80:80"
     volumes:
-      # 디렉터리째 마운트 — deploy.sh의 sed -i(active_upstream.inc 교체)가 반영되게
+      # 디렉터리째 마운트 — deploy.sh의 sed -i(active_upstream.inc 교체)가 반영되게.
+      # active_upstream.inc는 git이 추적하지 않는 VM 로컬 상태 파일 — 없으면 .example에서 복사(deploy.sh가 처리)
       - ./nginx:/etc/nginx/conf.d:ro
     depends_on:
       - grafana
@@ -37,12 +38,14 @@ services:
 
   # blue/green 두 색 중 한쪽만 기동한다 (--profile blue|green).
   # 프로필이 없으면 `up -d` 한 번에 둘 다 떠서 메모리를 2배로 먹는다.
-  app_blue:
+  # 서비스 이름에 밑줄(_)을 쓰면 안 된다 — Docker DNS 호스트명이 되는데 호스트명 규칙(RFC 1123)상
+  # 밑줄은 불가라 Tomcat이 `Host: app_blue:8080`을 400으로 거절한다(헬스체크·Prometheus 수집 실패).
+  app-blue:
     <<: *app
     container_name: apple-app-blue
     profiles: ["blue"]
 
-  app_green:
+  app-green:
     <<: *app
     container_name: apple-app-green
     profiles: ["green"]
