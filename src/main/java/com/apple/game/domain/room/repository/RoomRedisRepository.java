@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -17,6 +18,7 @@ public class RoomRedisRepository {
 
     private static final Duration ROOM_TTL = Duration.ofHours(6); // 방을 만든 후 6시간 동안 아무 일이 없으면 자동 소멸
     private static final Duration BOARD_TTL = Duration.ofMinutes(10);
+    private static final Duration REQS_TTL = Duration.ofMinutes(5); // 처리한 requestId 보관 기간 — 한 판(120초) + 여유
 
     private final StringRedisTemplate redisTemplate;
 
@@ -24,6 +26,7 @@ public class RoomRedisRepository {
     public static String scoresKey(String code) { return "room:" + code + ":scores"; }
     public static String readyKey(String code) { return "room:" + code + ":ready"; }
     public static String boardKey(String code) { return "room:" + code + ":board"; }
+    public static String reqsKey(String code) { return "room:" + code + ":reqs"; } // 처리 완료한 clear requestId SET
 
     // Lua 스크립트 이용
     // EXISTS room:ABC123, HGET room:ABC123 status, HSET room:ABC123 guestId id
@@ -120,9 +123,35 @@ public class RoomRedisRepository {
         return redisTemplate.opsForHash().entries(roomKey(code));
     }
 
-    // 방 삭제(혼자 있던 방에서 나가는 경우) -> 누적 점수 키도 같이 정리
+    // requestId 멱등(idempotent) 처리 — 같은 requestId는 한 번만 처리한다.
+    // WebSocket은 네트워크가 불안정하면 클라이언트가 같은 메시지를 재전송할 수 있고,
+    // 그 재전송이 "정상적인 두 번째 clear"와 구분되지 않는다. 그래서 프론트가 요청마다 UUID를 붙이고,
+    // 서버는 SADD의 반환값(새로 추가되면 1, 이미 있으면 0)으로 첫 도착만 통과시킨다.
+    // SADD 자체가 원자 명령이라 같은 requestId가 동시에 두 번 와도 정확히 하나만 1을 받는다.
+    public boolean markRequestOnce(String code, String requestId) {
+        Long added = redisTemplate.opsForSet().add(reqsKey(code), requestId);
+        redisTemplate.expire(reqsKey(code), REQS_TTL); // 판이 끝나고도 SET이 남지 않도록 TTL 갱신
+        return added != null && added == 1;
+    }
+
+    // APPLES_CLEARED 브로드캐스트용 — 이번 판 점수 (userId -> score). scores Hash는 clear 성공 시 HINCRBY로 쌓인다
+    public Map<Long, Integer> findScores(String code) {
+        Map<Object, Object> entries = redisTemplate.opsForHash().entries(scoresKey(code));
+        Map<Long, Integer> scores = new LinkedHashMap<>();
+        entries.forEach((k, v) -> scores.put(Long.valueOf((String) k), Integer.valueOf((String) v)));
+        return scores;
+    }
+
+    // 새 판 시작 시 이전 판의 흔적 정리 — 이번 판 점수(scores)와 처리한 requestId(reqs).
+    // 보드는 saveBoard()가 덮어쓰지만 scores/reqs는 지워주지 않으면 2판째 APPLES_CLEARED에 1판 점수가 섞여 나간다.
+    // (누적 점수 total 키는 Step 11에서 별도 관리 — 여기서 건드리지 않는다)
+    public void resetRoundKeys(String code) {
+        redisTemplate.delete(List.of(scoresKey(code), reqsKey(code)));
+    }
+
+    // 방 삭제(혼자 있던 방에서 나가는 경우) -> 점수·ready·보드·requestId 키도 같이 정리
     public void deleteRoom(String code) {
-        redisTemplate.delete(List.of(roomKey(code), scoresKey(code), readyKey(code), boardKey(code)));
+        redisTemplate.delete(List.of(roomKey(code), scoresKey(code), readyKey(code), boardKey(code), reqsKey(code)));
     }
 
     // 둘 중 하나가 나가고 한명만 남는 경우 -> 남는 사람을 host로 승격, Waiting으로 돌림
@@ -132,6 +161,6 @@ public class RoomRedisRepository {
         redisTemplate.opsForHash().put(key, "hostId", String.valueOf(remainingUserId));
         redisTemplate.opsForHash().put(key, "status", RoomStatus.WAITING.name());
         redisTemplate.opsForHash().put(key, "round", "0");
-        redisTemplate.delete(List.of(scoresKey(code), readyKey(code), boardKey(code))); // 누적 점수·ready·보드 초기화
+        redisTemplate.delete(List.of(scoresKey(code), readyKey(code), boardKey(code), reqsKey(code))); // 점수·ready·보드·requestId 초기화
     }
 }
