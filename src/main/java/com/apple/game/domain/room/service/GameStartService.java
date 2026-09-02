@@ -12,7 +12,6 @@ import com.apple.game.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,7 +34,7 @@ public class GameStartService {
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final GameEndService gameEndService;
-    private final TaskScheduler gameTaskScheduler;
+    private final GameTimerRegistry timerRegistry;
 
     @Transactional
     public void ready(String roomCode, Long userId) {
@@ -57,6 +56,8 @@ public class GameStartService {
         int[][] board = BoardGenerator.generate(seed);
         roomRedisRepository.resetRoundKeys(roomCode); // 이전 판의 scores·requestId 정리 (연전 시 점수가 이월되지 않게)
         roomRedisRepository.saveBoard(roomCode, board);
+        Instant startedAt = Instant.now();
+        roomRedisRepository.markStarted(roomCode, match.getId(), startedAt.toEpochMilli()); // 재접속 스냅샷·몰수 정산이 판을 찾는 근거
 
         // Lua가 START를 반환했다면 방 상태는 이미 PLAYING — host/guest가 모두 존재한다
         Map<Object, Object> room = roomRedisRepository.findRoom(roomCode);
@@ -71,14 +72,16 @@ public class GameStartService {
                 "/topic/room/" + roomCode,
                 GameSocketMessage.GameStart.of(
                         match.getId(), round, players, board,
-                        TIME_LIMIT_SECONDS, Instant.now().toString()));
+                        TIME_LIMIT_SECONDS, startedAt.toString()));
 
         // 판 종료 타이머 — 제한시간 + 1초 유예(마지막 순간의 clear가 도착할 시간).
         // 판정은 endByTimeUp이 다시 하므로(status·@Version) 타이머가 이르든 늦든 정합성엔 영향 없다.
+        // 등록부(registry)에 두는 이유: 재접속 시 '이 인스턴스가 아는 판인가'를 has()로 판별한다.
         Long matchId = match.getId();
-        gameTaskScheduler.schedule(
-                () -> gameEndService.endByTimeUp(matchId, roomCode),
-                Instant.now().plusSeconds(TIME_LIMIT_SECONDS + 1));
+        timerRegistry.schedule(
+                GameTimerRegistry.matchKey(matchId),
+                startedAt.plusSeconds(TIME_LIMIT_SECONDS + 1),
+                () -> gameEndService.endByTimeUp(matchId, roomCode));
 
         log.info("GAME_START: roomCode={}, matchId={}, round={}", roomCode, match.getId(), round);
     }
