@@ -40,6 +40,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(SWAGGER_PATHS).permitAll()
                         .requestMatchers(STATIC_PATHS).permitAll()
+                        // Tomcat이 4xx/5xx 때 내부 디스패치하는 에러 페이지. 막혀 있으면 원래
+                        // 오류에 더해 /error 접근 거부(AccessDenied) 예외가 로그에 이중으로 쌓인다
+                        .requestMatchers("/error").permitAll()
                         // logout은 인증 필요 — /api/auth/** permitAll보다 먼저 선언해야 이 규칙이 이긴다
                         .requestMatchers("/api/auth/logout").authenticated()
                         .requestMatchers("/api/auth/**").permitAll()
