@@ -1,7 +1,7 @@
 package com.apple.game.domain.solo;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -16,15 +16,21 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * solo_record 인덱스 성능 실습용 더미 데이터 생성기 (수동 실행 전용).
  *
- * 실행 방법: 아래 @Disabled를 주석 처리하고 IDE에서 generate() 실행.
+ * 실행 방법: SOLO_DUMMY=true ./gradlew test --tests SoloRecordDummyGenerator
+ *           (IDE에서는 실행 구성에 환경변수 SOLO_DUMMY=true 추가)
  * 주의: solo_record를 TRUNCATE 하므로 기존 기록이 전부 삭제된다.
+ *
+ * 게이트를 @Disabled 주석 토글이 아니라 환경변수로 하는 이유:
+ * 주석을 풀고 되돌리는 걸 잊은 채 커밋되면 매 CI가 200만 건 INSERT를
+ * 실행한다 — 실제로 그렇게 커밋되어 CI test가 25분+ 걸렸다.
+ * ClearExecutorBenchmarkTest(CLEAR_BENCH)와 같은 패턴.
  *
  * 전제: application-local.yaml의 JDBC URL에 rewriteBatchedStatements=true
  * (없으면 batch가 한 건씩 전송되어 수십 분이 걸린다)
  */
 @SpringBootTest
 @ActiveProfiles("local")
-// @Disabled("더미 데이터 생성용 — 실행할 때만 이 어노테이션을 주석 처리")
+@EnabledIfEnvironmentVariable(named = "SOLO_DUMMY", matches = "true")
 class SoloRecordDummyGenerator {
 
     private static final int USER_COUNT = 10_000;
