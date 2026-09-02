@@ -56,6 +56,11 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
       MYSQL_DATABASE: applegame
+    # skip-log-bin: binlog는 복제용인데 VM 1대라 복제가 없다 — 디스크만 먹는다 (§3-1)
+    # buffer pool 2G: §3 메모리 예산. 기본 128M이면 데이터가 조금만 커져도 디스크를 두드린다
+    command:
+      - --skip-log-bin
+      - --innodb-buffer-pool-size=2G
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
