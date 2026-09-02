@@ -101,7 +101,7 @@
         <section id="tab-battle" class="card tabPanel hidden">
             <div id="battleLobby">
                 <h2>2인 대전</h2>
-                <p class="hint">같은 보드에서 실시간으로 경쟁합니다. 한 방에서 여러 판을 이어서 하면 누적 점수가 쌓이고, 상대가 나가면 초기화됩니다.</p>
+                <p class="hint">같은 보드에서 실시간으로 경쟁합니다. 한 방에서 여러 판을 이어서 하면 상대와의 승수가 쌓이고, 상대가 나가면 초기화됩니다.</p>
                 <button id="btnRoomCreate" class="primary">방 만들기</button>
                 <div class="divider">또는</div>
                 <div class="row">
@@ -125,13 +125,13 @@
                     <div class="scorecard me">
                         <div class="name" id="meName">나</div>
                         <div class="score" id="meScore">0</div>
-                        <div class="total">누적 <b id="meTotal">0</b></div>
+                        <div class="total"><b id="meWins">0승</b></div>
                     </div>
                     <div class="vs">VS</div>
                     <div class="scorecard opp">
                         <div class="name" id="oppName">상대 대기 중…</div>
                         <div class="score" id="oppScore">0</div>
-                        <div class="total">누적 <b id="oppTotal">0</b></div>
+                        <div class="total"><b id="oppWins">0승</b></div>
                     </div>
                 </div>
 

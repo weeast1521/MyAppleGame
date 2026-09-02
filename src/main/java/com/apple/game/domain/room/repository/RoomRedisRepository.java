@@ -27,7 +27,7 @@ public class RoomRedisRepository {
     public static String readyKey(String code) { return "room:" + code + ":ready"; }
     public static String boardKey(String code) { return "room:" + code + ":board"; }
     public static String reqsKey(String code) { return "room:" + code + ":reqs"; } // 처리 완료한 clear requestId SET
-    public static String totalsKey(String code) { return "room:" + code + ":totals"; } // 방 단위 누적 점수 Hash (연전 합산, 이탈 시 초기화)
+    public static String winsKey(String code) { return "room:" + code + ":wins"; } // 방 단위 승수 Hash (연전, 이탈 시 초기화)
 
     // Lua 스크립트 이용
     // EXISTS room:ABC123, HGET room:ABC123 status, HSET room:ABC123 guestId id
@@ -145,26 +145,31 @@ public class RoomRedisRepository {
 
     // 새 판 시작 시 이전 판의 흔적 정리 — 이번 판 점수(scores)와 처리한 requestId(reqs).
     // 보드는 saveBoard()가 덮어쓰지만 scores/reqs는 지워주지 않으면 2판째 APPLES_CLEARED에 1판 점수가 섞여 나간다.
-    // (누적 점수 totals 키는 방 단위 — 여기서 건드리지 않는다)
+    // (승수 wins 키는 방 단위 — 여기서 건드리지 않는다)
     public void resetRoundKeys(String code) {
         redisTemplate.delete(List.of(scoresKey(code), reqsKey(code)));
     }
 
-    // 판 종료 정산 시 이번 판 점수를 누적에 합산하고, 합산 후의 누적 전체를 돌려준다 (GAME_END의 totalScores)
-    public Map<Long, Integer> addToTotals(String code, Map<Long, Integer> roundScores) {
-        String key = totalsKey(code);
-        roundScores.forEach((userId, score) ->
-                redisTemplate.opsForHash().increment(key, String.valueOf(userId), score));
+    // 판 종료 정산 시 승자의 승수를 1 올리고(무승부면 winnerId null → 증가 없음),
+    // 두 플레이어의 승수를 돌려준다 (GAME_END의 wins). 진 사람·무승부는 0으로 채워 프론트가 키 존재를 가정하지 않게 한다.
+    public Map<Long, Integer> recordWin(String code, Long winnerId, List<Long> playerIds) {
+        String key = winsKey(code);
+        if (winnerId != null) {
+            redisTemplate.opsForHash().increment(key, String.valueOf(winnerId), 1);
+        }
         redisTemplate.expire(key, ROOM_TTL);
 
         Map<Object, Object> entries = redisTemplate.opsForHash().entries(key);
-        Map<Long, Integer> totals = new LinkedHashMap<>();
-        entries.forEach((k, v) -> totals.put(Long.valueOf((String) k), Integer.valueOf((String) v)));
-        return totals;
+        Map<Long, Integer> wins = new LinkedHashMap<>();
+        for (Long id : playerIds) {
+            Object v = entries.get(String.valueOf(id));
+            wins.put(id, v == null ? 0 : Integer.valueOf((String) v));
+        }
+        return wins;
     }
 
     // 판 종료 후 방을 "다음 판 ready 대기" 상태로 되돌린다.
-    // 보드만 정리하고 방 Hash(hostId·guestId·round)·누적(totals)은 유지 → 재-ready 시 연전.
+    // 보드만 정리하고 방 Hash(hostId·guestId·round)·승수(wins)는 유지 → 재-ready 시 연전.
     // scores/reqs는 다음 판 시작 시 resetRoundKeys()가 지우므로 여기서 안 지운다.
     public void finishRound(String code) {
         redisTemplate.opsForHash().put(roomKey(code), "status", RoomStatus.READY.name());
@@ -172,19 +177,19 @@ public class RoomRedisRepository {
         redisTemplate.delete(boardKey(code));
     }
 
-    // 방 삭제(혼자 있던 방에서 나가는 경우) -> 점수·ready·보드·requestId·누적 키도 같이 정리
+    // 방 삭제(혼자 있던 방에서 나가는 경우) -> 점수·ready·보드·requestId·승수 키도 같이 정리
     public void deleteRoom(String code) {
-        redisTemplate.delete(List.of(roomKey(code), scoresKey(code), readyKey(code), boardKey(code), reqsKey(code), totalsKey(code)));
+        redisTemplate.delete(List.of(roomKey(code), scoresKey(code), readyKey(code), boardKey(code), reqsKey(code), winsKey(code)));
     }
 
     // 둘 중 하나가 나가고 한명만 남는 경우 -> 남는 사람을 host로 승격, Waiting으로 돌림
-    // 누적(totals)도 초기화 — 연전 상대가 사라졌으므로 방 단위 누적은 의미를 잃는다 (story.md Step 11)
+    // 승수(wins)도 초기화 — 연전 상대가 사라졌으므로 '그 상대와의 승수'는 의미를 잃는다 (story.md Step 11)
     public void resetToWaiting(String code, Long remainingUserId) {
         String key = roomKey(code);
         redisTemplate.opsForHash().delete(key, "guestId");
         redisTemplate.opsForHash().put(key, "hostId", String.valueOf(remainingUserId));
         redisTemplate.opsForHash().put(key, "status", RoomStatus.WAITING.name());
         redisTemplate.opsForHash().put(key, "round", "0");
-        redisTemplate.delete(List.of(scoresKey(code), readyKey(code), boardKey(code), reqsKey(code), totalsKey(code))); // 점수·ready·보드·requestId·누적 초기화
+        redisTemplate.delete(List.of(scoresKey(code), readyKey(code), boardKey(code), reqsKey(code), winsKey(code))); // 점수·ready·보드·requestId·승수 초기화
     }
 }

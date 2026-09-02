@@ -10,6 +10,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -57,7 +58,7 @@ public class GameEndService {
             return; // 이미 FINISHED/ABORTED — 멱등
         }
 
-        Map<Long, Integer> totals = roomRedisRepository.addToTotals(roomCode, scores);
+        Map<Long, Integer> wins = roomRedisRepository.recordWin(roomCode, settlement.winnerUserId(), List.of(hostId, guestId));
         int round = Integer.parseInt((String) room.getOrDefault("round", "0"));
 
         Map<Long, String> results = new LinkedHashMap<>();
@@ -66,7 +67,7 @@ public class GameEndService {
         messagingTemplate.convertAndSend(
                 "/topic/room/" + roomCode,
                 GameSocketMessage.GameEnd.of(matchId, round, "TIME_UP",
-                        scores, totals, results, settlement.winnerUserId()));
+                        scores, wins, results, settlement.winnerUserId()));
 
         // 방을 READY로 되돌리고 보드 삭제 — 이 시점부터 늦게 도착한 clear는 거절된다
         roomRedisRepository.finishRound(roomCode);
