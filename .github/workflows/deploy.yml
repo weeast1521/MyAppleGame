@@ -1,9 +1,15 @@
 # main 푸시 → 테스트 → GHCR 이미지 push → VM ssh 접속 → blue-green 전환
+# PR에서는 test만 돈다 — build-and-push의 `if: github.ref == 'refs/heads/main'` 가드가
+# 이미지 push·배포를 막고, deploy는 needs로 연쇄 스킵된다.
+# main 브랜치 보호가 "test 체크 성공"을 요구하므로 pull_request 트리거가 없으면
+# 체크가 영원히 보고되지 않아 머지가 불가능해진다.
 # 필요한 리포 시크릿: SSH_HOST(서버 IP), SSH_USER(deploy), SSH_KEY(개인키)
 name: Deploy
 
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch: # 수동 재배포용
 
