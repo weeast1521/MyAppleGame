@@ -3,6 +3,7 @@ package com.apple.game.domain.match.service;
 import com.apple.game.domain.match.entity.GameMatch;
 import com.apple.game.domain.match.entity.MatchPlayer;
 import com.apple.game.domain.match.entity.MatchResult;
+import com.apple.game.domain.match.entity.MatchStatus;
 import com.apple.game.domain.match.repository.GameMatchRepository;
 import com.apple.game.domain.match.repository.MatchPlayerRepository;
 import com.apple.game.domain.user.repository.UserRepository;
@@ -68,5 +69,21 @@ public class MatchSettlementService {
         log.info("정산 완료: matchId={}, host={}({}) vs guest={}({})",
                 matchId, hostId, hostScore, guestId, guestScore);
         return new Settlement(Map.of(hostId, hostResult, guestId, guestResult), winnerUserId);
+    }
+
+    /**
+     * 게임 도중 플레이어가 방을 나갈 때 — 판을 무효(ABORTED) 처리해 전적에 남기지 않는다.
+     * 타이머(TIME_UP)와 동시에 실행되면 @Version이 한쪽만 통과시킨다:
+     * 정산이 이기면 이쪽이 OptimisticLockingFailureException(호출부에서 무시),
+     * 이쪽이 이기면 정산 쪽 settleTimeUp이 물러난다.
+     */
+    @Transactional
+    public void abortActiveMatch(String roomCode) {
+        gameMatchRepository
+                .findTopByRoomCodeAndStatusOrderByIdDesc(roomCode, MatchStatus.PLAYING)
+                .ifPresent(match -> {
+                    match.abort();
+                    log.info("판 무효 처리(이탈): matchId={}, roomCode={}", match.getId(), roomCode);
+                });
     }
 }
