@@ -9,7 +9,7 @@
  *           발행: /app/room/{roomCode}/ready, /app/room/{roomCode}/clear
  *  - 브로드캐스트는 type 필드로 구분:
  *           GAME_START / APPLES_CLEARED / GAME_END / OPPONENT_STATUS / PLAYER_LEFT
- *  - 같은 방에서 판이 끝나면 다시 ready → 다음 판. 누적 점수(totalScores)는
+ *  - 같은 방에서 판이 끝나면 다시 ready → 다음 판. 같은 상대와의 승수(wins)는
  *    방 단위로 유지되고, 한 명이 나가면(PLAYER_LEFT) 초기화된다.
  * ================================================================ */
 const Battle = (() => {
@@ -20,7 +20,7 @@ const Battle = (() => {
     let oppId = null;
     let players = {};     // userId → nickname
     let scores = {};      // userId → 이번 판 점수
-    let totals = {};      // userId → 누적 점수 (방 단위, 이탈 시 초기화)
+    let wins = {};        // userId → 이 방에서의 승수 (방 단위, 이탈 시 초기화)
     let round = 0;        // 현재 판 번호
     let playing = false;
     let timerId = null;
@@ -126,9 +126,9 @@ const Battle = (() => {
 
     // 누적 점수/판 카운트 초기화 (입장 시 · 상대가 나갔을 때)
     function resetSession() {
-        totals = {};
+        wins = {};
         round = 0;
-        refreshTotals();
+        refreshWins();
     }
 
     /* ---------------- WebSocket ---------------- */
@@ -198,7 +198,7 @@ const Battle = (() => {
         board.setBoard(msg.board);
         board.setActive(true);
         refreshScores();
-        refreshTotals();
+        refreshWins();
         $('btnRematch').classList.add('hidden');
         $('battleStatus').textContent = `${round}판 시작! 합이 10이 되게 드래그하세요.`;
         startTimer(msg.timeLimitSeconds ?? 120);
@@ -223,13 +223,9 @@ const Battle = (() => {
             scores = msg.scores;
             refreshScores();
         }
-        // 누적 점수: 서버가 주면 그 값을, 없으면 이번 판 점수를 로컬 합산 (백엔드 구현 전 임시)
-        if (msg.totalScores) {
-            totals = msg.totalScores;
-        } else {
-            for (const [id, s] of Object.entries(scores)) totals[id] = (totals[id] ?? 0) + s;
-        }
-        refreshTotals();
+        // 같은 상대와의 승수 — 서버(GAME_END.wins)가 단일 진실 원천
+        if (msg.wins) wins = msg.wins;
+        refreshWins();
 
         const myResult = msg.results?.[myId];
         let text;
@@ -317,11 +313,11 @@ const Battle = (() => {
         $('oppScore').textContent = oppId ? (scores[oppId] ?? 0) : 0;
     }
 
-    // 상단 누적 점수판 — 판이 끝날 때마다 갱신, 이탈 시 초기화
-    function refreshTotals() {
+    // 상단 승수 표시 — 판이 끝날 때마다 갱신, 이탈 시 초기화
+    function refreshWins() {
         $('roundInfo').textContent = round > 0 ? `${round}판` : '';
-        $('meTotal').textContent = totals[myId] ?? 0;
-        $('oppTotal').textContent = oppId ? (totals[oppId] ?? 0) : 0;
+        $('meWins').textContent = `${wins[myId] ?? 0}승`;
+        $('oppWins').textContent = `${oppId ? (wins[oppId] ?? 0) : 0}승`;
     }
 
     function startTimer(limit) {
