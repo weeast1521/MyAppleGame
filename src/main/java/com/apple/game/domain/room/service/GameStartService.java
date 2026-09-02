@@ -12,6 +12,7 @@ import com.apple.game.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +34,8 @@ public class GameStartService {
     private final GameMatchRepository gameMatchRepository;
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final GameEndService gameEndService;
+    private final TaskScheduler gameTaskScheduler;
 
     @Transactional
     public void ready(String roomCode, Long userId) {
@@ -69,6 +72,13 @@ public class GameStartService {
                 GameSocketMessage.GameStart.of(
                         match.getId(), round, players, board,
                         TIME_LIMIT_SECONDS, Instant.now().toString()));
+
+        // 판 종료 타이머 — 제한시간 + 1초 유예(마지막 순간의 clear가 도착할 시간).
+        // 판정은 endByTimeUp이 다시 하므로(status·@Version) 타이머가 이르든 늦든 정합성엔 영향 없다.
+        Long matchId = match.getId();
+        gameTaskScheduler.schedule(
+                () -> gameEndService.endByTimeUp(matchId, roomCode),
+                Instant.now().plusSeconds(TIME_LIMIT_SECONDS + 1));
 
         log.info("GAME_START: roomCode={}, matchId={}, round={}", roomCode, match.getId(), round);
     }

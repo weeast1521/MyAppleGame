@@ -1,6 +1,8 @@
 package com.apple.game.domain.room.service;
 
+import com.apple.game.domain.match.service.MatchSettlementService;
 import com.apple.game.domain.room.dto.res.RoomResDTO;
+import com.apple.game.domain.room.dto.ws.GameSocketMessage;
 import com.apple.game.domain.room.entity.RoomStatus;
 import com.apple.game.domain.room.exception.RoomErrorCode;
 import com.apple.game.domain.room.repository.RoomRedisRepository;
@@ -9,12 +11,16 @@ import com.apple.game.domain.user.exception.UserErrorCode;
 import com.apple.game.domain.user.repository.UserRepository;
 import com.apple.game.global.exception.CustomException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RoomService {
@@ -27,6 +33,8 @@ public class RoomService {
 
     private final UserRepository userRepository;
     private final RoomRedisRepository roomRedisRepository;
+    private final MatchSettlementService matchSettlementService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public RoomResDTO.Create create(Long hostId) {
         for (int i = 0; i < MAX_CODE_RETRY; i++) {
@@ -73,12 +81,28 @@ public class RoomService {
         // 내 방이 아니면 무시
         if (!me.equals(hostId) && !me.equals(guestId)) return;
 
+        // 게임 도중 이탈 → 진행 중이던 판을 무효(ABORTED) 처리해 전적에 남기지 않는다.
+        // Redis 정리보다 먼저 — 방을 먼저 되돌리면 그 사이 타이머가 정산해 버릴 수 있다.
+        // 타이머와의 경합은 @Version이 판정: 정산이 이미 이겼으면 조용히 물러난다(판은 정상 기록됨).
+        if (RoomStatus.PLAYING.name().equals(room.get("status"))) {
+            try {
+                matchSettlementService.abortActiveMatch(roomCode);
+            } catch (OptimisticLockingFailureException e) {
+                log.info("판 무효 경합에서 패배 — TIME_UP 정산이 먼저 완료: roomCode={}", roomCode);
+            }
+        }
+
         // 혼자였던 방 -> 삭제 & 남은 사람이 host
         if (guestId == null) {
             roomRedisRepository.deleteRoom(roomCode);
         } else {
             Long remaining = me.equals(hostId) ? Long.valueOf(guestId) : Long.valueOf(hostId);
-            roomRedisRepository.resetToWaiting(roomCode, remaining);
+            roomRedisRepository.resetToWaiting(roomCode, remaining); // 누적(totals)·round도 여기서 초기화
+
+            // 남은 사람에게 알림 — 프론트는 누적 점수를 초기화하고 새 상대 대기 화면으로
+            messagingTemplate.convertAndSend(
+                    "/topic/room/" + roomCode,
+                    GameSocketMessage.PlayerLeft.of(userId));
         }
     }
 
