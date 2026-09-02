@@ -65,7 +65,34 @@ public class GameSocketMessage {
         }
     }
 
-    // 상대가 방을 나감 — 프론트는 누적 점수를 초기화하고 새 상대 대기 화면으로 돌아간다
+    // 상대 연결 상태 — DISCONNECTED(유예 시작, graceSeconds 내 재접속 대기) / RECONNECTED(유예 취소)
+    public record OpponentStatus(String type, Long userId, String status, Integer graceSeconds) {
+        public static OpponentStatus disconnected(Long userId, int graceSeconds) {
+            return new OpponentStatus("OPPONENT_STATUS", userId, "DISCONNECTED", graceSeconds);
+        }
+        public static OpponentStatus reconnected(Long userId) {
+            return new OpponentStatus("OPPONENT_STATUS", userId, "RECONNECTED", null);
+        }
+    }
+
+    // 재접속한 본인에게만 보내는 현재 판 스냅샷 (/user/queue/game) — 보드는 지워진 칸이 0
+    public record GameSnapshot(
+            String type,
+            Long matchId,
+            int round,
+            Map<Long, String> players,
+            int[][] board,
+            Map<Long, Integer> scores,
+            Map<Long, Integer> wins,
+            int remainingSeconds
+    ) {
+        public static GameSnapshot of(Long matchId, int round, Map<Long, String> players, int[][] board,
+                                      Map<Long, Integer> scores, Map<Long, Integer> wins, int remainingSeconds) {
+            return new GameSnapshot("GAME_SNAPSHOT", matchId, round, players, board, scores, wins, remainingSeconds);
+        }
+    }
+
+    // 상대가 방을 나감 — 프론트는 승수를 초기화하고 새 상대 대기 화면으로 돌아간다
     public record PlayerLeft(String type, Long userId) {
         public static PlayerLeft of(Long userId) {
             return new PlayerLeft("PLAYER_LEFT", userId);

@@ -60,15 +60,38 @@ public class MatchSettlementService {
             hostResult = MatchResult.DRAW; guestResult = MatchResult.DRAW; winnerUserId = null;
         }
 
-        match.finish(); // @Version 증가 — 동시 정산의 다른 한쪽은 커밋 시점에 실패한다
-
-        // getReferenceById: SELECT 없이 FK만 채우는 프록시 — 정산에 유저 데이터 자체는 필요 없다
-        matchPlayerRepository.save(MatchPlayer.of(match, userRepository.getReferenceById(hostId), hostScore, hostResult));
-        matchPlayerRepository.save(MatchPlayer.of(match, userRepository.getReferenceById(guestId), guestScore, guestResult));
-
-        log.info("정산 완료: matchId={}, host={}({}) vs guest={}({})",
+        persist(match, Map.of(hostId, hostScore, guestId, guestScore), Map.of(hostId, hostResult, guestId, guestResult));
+        log.info("정산 완료(TIME_UP): matchId={}, host={}({}) vs guest={}({})",
                 matchId, hostId, hostScore, guestId, guestScore);
         return new Settlement(Map.of(hostId, hostResult, guestId, guestResult), winnerUserId);
+    }
+
+    /**
+     * 몰수 정산: 점수와 무관하게 남은 사람이 FORFEIT_WIN, 이탈한 사람이 FORFEIT_LOSE.
+     * 점수는 기록용으로 그대로 저장한다. 방어(status 가드·@Version·UNIQUE)는 TIME_UP과 동일.
+     */
+    @Transactional
+    public Settlement settleForfeit(Long matchId, Long winnerId, Long loserId, Map<Long, Integer> roundScores) {
+        GameMatch match = gameMatchRepository.findById(matchId).orElse(null);
+        if (match == null || !match.isPlaying()) {
+            return null;
+        }
+        Map<Long, MatchResult> results = Map.of(winnerId, MatchResult.FORFEIT_WIN, loserId, MatchResult.FORFEIT_LOSE);
+        Map<Long, Integer> scores = Map.of(
+                winnerId, roundScores.getOrDefault(winnerId, 0),
+                loserId, roundScores.getOrDefault(loserId, 0));
+        persist(match, scores, results);
+        log.info("정산 완료(FORFEIT): matchId={}, winner={}, loser={}", matchId, winnerId, loserId);
+        return new Settlement(results, winnerId);
+    }
+
+    // 공통 영속화: FINISHED 전이(@Version 증가) + match_player 2행.
+    // getReferenceById: SELECT 없이 FK만 채우는 프록시 — 정산에 유저 데이터 자체는 필요 없다
+    private void persist(GameMatch match, Map<Long, Integer> scores, Map<Long, MatchResult> results) {
+        match.finish(); // @Version 증가 — 동시 정산의 다른 한쪽은 커밋 시점에 실패한다
+        results.forEach((userId, result) ->
+                matchPlayerRepository.save(MatchPlayer.of(
+                        match, userRepository.getReferenceById(userId), scores.getOrDefault(userId, 0), result)));
     }
 
     /**

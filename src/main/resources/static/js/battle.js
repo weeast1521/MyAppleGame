@@ -5,7 +5,7 @@
  *  - REST : 방 생성(POST /api/rooms), 입장(POST /api/rooms/{code}/join),
  *           나가기(DELETE /api/rooms/{code}/leave)
  *  - WS   : SockJS + STOMP (/ws), CONNECT 헤더에 JWT
- *           구독: /topic/room/{roomCode}, /user/queue/errors
+ *           구독: /topic/room/{roomCode}, /user/queue/errors, /user/queue/game(재접속 스냅샷)
  *           발행: /app/room/{roomCode}/ready, /app/room/{roomCode}/clear
  *  - 브로드캐스트는 type 필드로 구분:
  *           GAME_START / APPLES_CLEARED / GAME_END / OPPONENT_STATUS / PLAYER_LEFT
@@ -141,6 +141,8 @@ const Battle = (() => {
             onConnect: () => {
                 stomp.subscribe(`/topic/room/${roomCode}`, (f) => handleBroadcast(JSON.parse(f.body)));
                 stomp.subscribe('/user/queue/errors', (f) => handlePrivate(JSON.parse(f.body)));
+                stomp.subscribe('/user/queue/game', (f) => handlePrivate(JSON.parse(f.body)));
+                // ready는 연결마다 보낸다 — 게임 중 재접속이면 서버가 새 판 대신 GAME_SNAPSHOT을 보내준다
                 stomp.publish({ destination: `/app/room/${roomCode}/ready`, body: '{}' });
             },
             onStompError: (frame) => {
@@ -175,6 +177,7 @@ const Battle = (() => {
     }
 
     function handlePrivate(msg) {
+        if (msg.type === 'GAME_SNAPSHOT') return onSnapshot(msg);
         if (msg.type !== 'CLEAR_REJECTED') return;
         const text = {
             ALREADY_TAKEN: '한발 늦었어요! 상대가 먼저 가져갔습니다. ⚡',
@@ -202,6 +205,26 @@ const Battle = (() => {
         $('btnRematch').classList.add('hidden');
         $('battleStatus').textContent = `${round}판 시작! 합이 10이 되게 드래그하세요.`;
         startTimer(msg.timeLimitSeconds ?? 120);
+    }
+
+    // 재접속(새로고침·순단 복구) — 서버 스냅샷으로 판 전체를 재동기화한다. 클라이언트 상태는 믿지 않는다.
+    function onSnapshot(msg) {
+        playing = true;
+        round = msg.round ?? round;
+        if (msg.players) {
+            players = msg.players;
+            const opp = Object.keys(players).find((id) => id !== myId);
+            if (opp) setOpponent(opp, players[opp]);
+        }
+        scores = msg.scores ?? {};
+        wins = msg.wins ?? {};
+        board.setBoard(msg.board);
+        board.setActive(true);
+        refreshScores();
+        refreshWins();
+        $('btnRematch').classList.add('hidden');
+        $('battleStatus').textContent = `재접속 — ${round}판 계속! 남은 시간 ${msg.remainingSeconds}초`;
+        startTimer(msg.remainingSeconds ?? 0);
     }
 
     function onApplesCleared(msg) {
@@ -270,7 +293,11 @@ const Battle = (() => {
         $('meScore').textContent = '0';
         $('oppScore').textContent = '0';
         $('btnRematch').classList.add('hidden');
-        $('battleStatus').textContent = '상대가 방을 나갔습니다. 누적 점수가 초기화되었습니다 — 새 상대를 기다립니다.';
+        // 몰수 직후의 PLAYER_LEFT는 결과 문구(몰수승)를 덮지 않는다 — 이탈 안내만 덧붙인다
+        const cur = $('battleStatus').textContent;
+        $('battleStatus').textContent = cur.includes('몰수')
+            ? `${cur} 상대가 나갔습니다 — 새 상대를 기다립니다.`
+            : '상대가 방을 나갔습니다. 승수가 초기화되었습니다 — 새 상대를 기다립니다.';
     }
 
     /* ---------------- 게임 입력/표시 ---------------- */

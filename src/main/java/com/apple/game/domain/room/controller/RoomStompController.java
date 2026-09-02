@@ -5,6 +5,7 @@ import com.apple.game.domain.room.service.AppleClearService;
 import com.apple.game.domain.room.service.GameStartService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Controller;
@@ -20,9 +21,11 @@ public class RoomStompController {
 
     // 프론트 발행: /app/room/{roomCode}/ready (연결 직후 + 재대결 버튼)
     // principal은 CONNECT 때 인터셉터가 심어둔 것 — getName() == userId
+    // simpSessionId: 이 프레임을 보낸 WebSocket 세션 — 끊김 감지가 '누가 끊겼나'를 알 수 있게 방에 묶어둔다
     @MessageMapping("/room/{roomCode}/ready")
-    public void ready(@DestinationVariable String roomCode, Principal principal) {
-        gameStartService.ready(roomCode, Long.valueOf(principal.getName()));
+    public void ready(@DestinationVariable String roomCode, Principal principal,
+                      @Header("simpSessionId") String sessionId) {
+        gameStartService.ready(roomCode, Long.valueOf(principal.getName()), sessionId);
     }
 
     // 프론트 발행: /app/room/{roomCode}/clear  body = { requestId, r1, c1, r2, c2 }

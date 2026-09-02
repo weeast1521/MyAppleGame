@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Repository
 @RequiredArgsConstructor
@@ -28,6 +29,9 @@ public class RoomRedisRepository {
     public static String boardKey(String code) { return "room:" + code + ":board"; }
     public static String reqsKey(String code) { return "room:" + code + ":reqs"; } // 처리 완료한 clear requestId SET
     public static String winsKey(String code) { return "room:" + code + ":wins"; } // 방 단위 승수 Hash (연전, 이탈 시 초기화)
+    public static String sessionKey(String sessionId) { return "ws:session:" + sessionId; } // WS 세션 → (userId, roomCode)
+    public static String sessionsKey(String code) { return "room:" + code + ":sessions"; } // userId → 현재 세션 ID (최신 것만)
+    public static String discKey(String code) { return "room:" + code + ":disc"; } // userId → 이탈 nonce (유예 중인 사람)
 
     // Lua 스크립트 이용
     // EXISTS room:ABC123, HGET room:ABC123 status, HSET room:ABC123 guestId id
@@ -179,7 +183,8 @@ public class RoomRedisRepository {
 
     // 방 삭제(혼자 있던 방에서 나가는 경우) -> 점수·ready·보드·requestId·승수 키도 같이 정리
     public void deleteRoom(String code) {
-        redisTemplate.delete(List.of(roomKey(code), scoresKey(code), readyKey(code), boardKey(code), reqsKey(code), winsKey(code)));
+        redisTemplate.delete(List.of(roomKey(code), scoresKey(code), readyKey(code), boardKey(code), reqsKey(code), winsKey(code),
+                sessionsKey(code), discKey(code)));
     }
 
     // 둘 중 하나가 나가고 한명만 남는 경우 -> 남는 사람을 host로 승격, Waiting으로 돌림
@@ -190,6 +195,85 @@ public class RoomRedisRepository {
         redisTemplate.opsForHash().put(key, "hostId", String.valueOf(remainingUserId));
         redisTemplate.opsForHash().put(key, "status", RoomStatus.WAITING.name());
         redisTemplate.opsForHash().put(key, "round", "0");
-        redisTemplate.delete(List.of(scoresKey(code), readyKey(code), boardKey(code), reqsKey(code), winsKey(code))); // 점수·ready·보드·requestId·승수 초기화
+        redisTemplate.delete(List.of(scoresKey(code), readyKey(code), boardKey(code), reqsKey(code), winsKey(code), discKey(code))); // 점수·ready·보드·requestId·승수·이탈표시 초기화
+        redisTemplate.opsForHash().delete(key, "matchId", "startedAt");
+    }
+
+    // ---------- Step 12: 세션 매핑 · 이탈 유예 · 재접속 스냅샷 ----------
+
+    // 판 시작 시 방 Hash에 matchId·시작 시각을 남긴다 — 재접속 스냅샷(남은 시간)과 몰수 정산이 여기서 판을 찾는다
+    public void markStarted(String code, Long matchId, long startedAtEpochMs) {
+        redisTemplate.opsForHash().put(roomKey(code), "matchId", String.valueOf(matchId));
+        redisTemplate.opsForHash().put(roomKey(code), "startedAt", String.valueOf(startedAtEpochMs));
+    }
+
+    // WS 세션 ↔ (userId, roomCode) 양방향 매핑.
+    // Redis에 두는 이유: Phase 4에서 CONNECT를 받은 인스턴스와 DISCONNECT를 감지하는 인스턴스가 다를 수 있다.
+    // sessions Hash에는 유저당 '최신' 세션만 남긴다 — 새로고침으로 새 CONNECT가 먼저 오고 옛 DISCONNECT가
+    // 나중에 와도, 옛 세션의 종료를 이탈로 오판하지 않기 위한 근거가 된다.
+    public void bindSession(String sessionId, Long userId, String code) {
+        String key = sessionKey(sessionId);
+        redisTemplate.opsForHash().put(key, "userId", String.valueOf(userId));
+        redisTemplate.opsForHash().put(key, "roomCode", code);
+        redisTemplate.expire(key, ROOM_TTL);
+        redisTemplate.opsForHash().put(sessionsKey(code), String.valueOf(userId), sessionId);
+        redisTemplate.expire(sessionsKey(code), ROOM_TTL);
+    }
+
+    public Map<Object, Object> findSession(String sessionId) {
+        return redisTemplate.opsForHash().entries(sessionKey(sessionId));
+    }
+
+    public void unbindSession(String sessionId) {
+        redisTemplate.delete(sessionKey(sessionId));
+    }
+
+    // 이 유저의 현재(최신) 세션이 sessionId인가 — 아니면 이미 다른 세션으로 재접속한 것
+    public boolean isCurrentSession(String code, Long userId, String sessionId) {
+        Object cur = redisTemplate.opsForHash().get(sessionsKey(code), String.valueOf(userId));
+        return sessionId.equals(cur);
+    }
+
+    // 이탈 표시. nonce를 돌려주는 이유: 유예 타이머가 실행될 때 '내가 표시한 그 이탈'이 아직 유효한지 비교한다.
+    // 재접속 후 다시 끊기면 새 nonce가 쓰이므로, 옛 타이머는 nonce 불일치로 물러난다(타이머 취소 경합의 상태 기반 해결).
+    public String markDisconnected(String code, Long userId) {
+        String nonce = UUID.randomUUID().toString();
+        redisTemplate.opsForHash().put(discKey(code), String.valueOf(userId), nonce);
+        redisTemplate.expire(discKey(code), Duration.ofMinutes(5));
+        return nonce;
+    }
+
+    // 재접속 — 표시 해제. 표시가 있었으면 true(RECONNECTED 브로드캐스트 대상)
+    public boolean clearDisconnected(String code, Long userId) {
+        Long removed = redisTemplate.opsForHash().delete(discKey(code), String.valueOf(userId));
+        return removed != null && removed > 0;
+    }
+
+    public boolean isDisconnectNonceCurrent(String code, Long userId, String nonce) {
+        Object cur = redisTemplate.opsForHash().get(discKey(code), String.valueOf(userId));
+        return nonce.equals(cur);
+    }
+
+    // 재접속 스냅샷용 — 지워진 칸은 0 (프론트 board.setBoard가 0을 dead 셀로 그린다)
+    public int[][] snapshotBoard(String code, int rows, int cols) {
+        Map<Object, Object> entries = redisTemplate.opsForHash().entries(boardKey(code));
+        int[][] board = new int[rows][cols];
+        entries.forEach((k, v) -> {
+            String f = (String) k;
+            int sep = f.indexOf(':');
+            board[Integer.parseInt(f.substring(0, sep))][Integer.parseInt(f.substring(sep + 1))] = Integer.parseInt((String) v);
+        });
+        return board;
+    }
+
+    // 승수 조회(증가 없음) — 스냅샷용. 없는 키는 0
+    public Map<Long, Integer> findWins(String code, List<Long> playerIds) {
+        Map<Object, Object> entries = redisTemplate.opsForHash().entries(winsKey(code));
+        Map<Long, Integer> wins = new LinkedHashMap<>();
+        for (Long id : playerIds) {
+            Object v = entries.get(String.valueOf(id));
+            wins.put(id, v == null ? 0 : Integer.valueOf((String) v));
+        }
+        return wins;
     }
 }
