@@ -28,6 +28,7 @@ public class GameEndService {
     private final RoomRedisRepository roomRedisRepository;
     private final MatchSettlementService matchSettlementService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final GameTimerRegistry timerRegistry;
 
     /** 판 시작 시 등록된 타이머가 시간 종료에 호출한다. */
     public void endByTimeUp(Long matchId, String roomCode) {
@@ -74,5 +75,56 @@ public class GameEndService {
 
         log.info("GAME_END: roomCode={}, matchId={}, round={}, winner={}",
                 roomCode, matchId, round, settlement.winnerUserId());
+    }
+
+    /**
+     * 이탈 유예 초과 → 몰수. 남은 사람이 FORFEIT_WIN. 판은 방 Hash의 matchId로 찾는다.
+     * TIME_UP 타이머와 동시에 실행되면 @Version이 한쪽만 통과시킨다 — 몰수가 지면 조용히 물러난다
+     * (그 판은 정상 TIME_UP 결과로 기록된 것이므로 올바르다).
+     */
+    public void endByForfeit(String roomCode, Long leaverId) {
+        Map<Object, Object> room = roomRedisRepository.findRoom(roomCode);
+        String hostRaw = (String) room.get("hostId");
+        String guestRaw = (String) room.get("guestId");
+        String matchIdRaw = (String) room.get("matchId");
+        if (hostRaw == null || guestRaw == null || matchIdRaw == null) {
+            log.debug("몰수 무시(방 상태 소멸): roomCode={}, leaver={}", roomCode, leaverId);
+            return;
+        }
+        Long hostId = Long.valueOf(hostRaw);
+        Long guestId = Long.valueOf(guestRaw);
+        Long matchId = Long.valueOf(matchIdRaw);
+        if (!leaverId.equals(hostId) && !leaverId.equals(guestId)) {
+            return;
+        }
+        Long winnerId = leaverId.equals(hostId) ? guestId : hostId;
+
+        Map<Long, Integer> scores = new LinkedHashMap<>(roomRedisRepository.findScores(roomCode));
+        scores.putIfAbsent(hostId, 0);
+        scores.putIfAbsent(guestId, 0);
+
+        MatchSettlementService.Settlement settlement;
+        try {
+            settlement = matchSettlementService.settleForfeit(matchId, winnerId, leaverId, scores);
+        } catch (OptimisticLockingFailureException e) {
+            log.info("몰수 경합에서 패배 — TIME_UP 정산이 먼저 완료: matchId={}", matchId);
+            return;
+        }
+        if (settlement == null) {
+            return; // 이미 종결
+        }
+
+        timerRegistry.cancel(GameTimerRegistry.matchKey(matchId)); // TIME_UP 타이머 best-effort 취소
+        Map<Long, Integer> wins = roomRedisRepository.recordWin(roomCode, winnerId, List.of(hostId, guestId));
+        int round = Integer.parseInt((String) room.getOrDefault("round", "0"));
+        Map<Long, String> results = new LinkedHashMap<>();
+        settlement.results().forEach((userId, result) -> results.put(userId, result.name()));
+
+        messagingTemplate.convertAndSend(
+                "/topic/room/" + roomCode,
+                GameSocketMessage.GameEnd.of(matchId, round, "OPPONENT_LEFT", scores, wins, results, winnerId));
+        roomRedisRepository.finishRound(roomCode);
+
+        log.info("GAME_END(FORFEIT): roomCode={}, matchId={}, winner={}, leaver={}", roomCode, matchId, winnerId, leaverId);
     }
 }
