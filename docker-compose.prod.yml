@@ -8,6 +8,10 @@
 x-app: &app
   image: ghcr.io/weeast1521/myapplegame:${APP_TAG:-latest}
   environment:
+    # 호스트(VM)는 KST로 맞췄지만 컨테이너는 각자 UTC가 기본 — 로그·랭킹 시각이
+    # 9시간 어긋나지 않게 시각을 다루는 컨테이너마다 TZ를 넣는다(§2).
+    # prometheus·node-exporter는 제외: 설계상 항상 UTC로 동작하고 이미지에 tzdata도 없다.
+    TZ: Asia/Seoul
     SPRING_PROFILES_ACTIVE: prod
     DB_URL: ${DB_URL}
     DB_USERNAME: ${DB_USERNAME}
@@ -26,6 +30,8 @@ services:
   nginx:
     image: nginx:1.27-alpine
     container_name: apple-nginx
+    environment:
+      TZ: Asia/Seoul
     ports:
       - "80:80"
     volumes:
@@ -54,6 +60,8 @@ services:
     image: mysql:8.4
     container_name: apple-mysql
     environment:
+      # JDBC URL의 serverTimezone=Asia/Seoul과 짝 — DB의 NOW()·로그도 KST로
+      TZ: Asia/Seoul
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
       MYSQL_DATABASE: applegame
     # skip-log-bin: binlog는 복제용인데 VM 1대라 복제가 없다 — 디스크만 먹는다 (§3-1)
@@ -73,6 +81,8 @@ services:
   redis:
     image: redis:7
     container_name: apple-redis
+    environment:
+      TZ: Asia/Seoul
     # 이 Redis는 캐시가 아니라 랭킹(ZSET)·방 상태의 원본 저장소다 — 설계서 §2 "데이터".
     #   appendonly yes: 모든 쓰기를 AOF 로그로 남겨 재시작해도 유실 없게
     #                   (기본값은 RDB 스냅샷만이라 마지막 스냅샷 이후 쓰기가 날아간다)
@@ -102,6 +112,7 @@ services:
     image: grafana/grafana:11.6.0
     container_name: apple-grafana
     environment:
+      TZ: Asia/Seoul
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
       # 3000 포트를 열지 않고 nginx의 /grafana/ 경로로만 접근하기 위한 설정 짝
       GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
