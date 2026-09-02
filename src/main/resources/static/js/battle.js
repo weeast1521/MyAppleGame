@@ -265,12 +265,25 @@ const Battle = (() => {
         $('battleStatus').textContent = '다음 판 준비 완료 — 상대의 준비를 기다립니다…';
     }
 
+    // 멱등 검사용 요청 ID (서버가 재전송을 걸러내는 키).
+    // crypto.randomUUID()는 보안 컨텍스트(HTTPS·localhost) 전용이라 http+IP 배포에서는
+    // 함수 자체가 없다(undefined) — getRandomValues(어디서나 제공, 같은 CSPRNG)로
+    // 동일한 UUID v4를 직접 조립하는 폴백을 둔다. HTTPS(Phase 2) 후엔 위 분기를 탄다.
+    function genRequestId() {
+        if (crypto.randomUUID) return crypto.randomUUID();
+        const b = crypto.getRandomValues(new Uint8Array(16));
+        b[6] = (b[6] & 0x0f) | 0x40; // version 4
+        b[8] = (b[8] & 0x3f) | 0x80; // variant (RFC 4122)
+        const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+        return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+    }
+
     // 합이 10인 선택만 서버로 전송 — 판정(존재/합/경합)은 전적으로 서버가 한다.
     function handleSelect({ r1, c1, r2, c2, sum }) {
         if (!playing || sum !== 10 || !stomp) return;
         stomp.publish({
             destination: `/app/room/${roomCode}/clear`,
-            body: JSON.stringify({ requestId: crypto.randomUUID(), r1, c1, r2, c2 }),
+            body: JSON.stringify({ requestId: genRequestId(), r1, c1, r2, c2 }),
         });
     }
 
