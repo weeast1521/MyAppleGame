@@ -37,11 +37,31 @@ const Battle = (() => {
         $('btnRoomJoin').addEventListener('click', joinRoom);
         $('btnRoomLeave').addEventListener('click', leaveRoom);
         $('btnRematch').addEventListener('click', requestRematch);
-        $('btnCopyCode').addEventListener('click', () => {
-            navigator.clipboard.writeText(roomCode);
-            $('btnCopyCode').textContent = '복사됨';
+        $('btnCopyCode').addEventListener('click', async () => {
+            const ok = await copyText(roomCode);
+            $('btnCopyCode').textContent = ok ? '복사됨' : '복사 실패';
             setTimeout(() => ($('btnCopyCode').textContent = '복사'), 1200);
         });
+    }
+
+    // 클립보드 복사. navigator.clipboard는 보안 컨텍스트(HTTPS·localhost) 전용이라
+    // http+IP 배포에서는 undefined — crypto.randomUUID와 같은 계열(세 번째 사례).
+    // 폴백: 숨은 textarea에 넣고 선택 → execCommand('copy'). deprecated지만 http에서 유일하게 동작한다.
+    async function copyText(text) {
+        if (navigator.clipboard?.writeText) {
+            try { await navigator.clipboard.writeText(text); return true; } catch { /* 권한 거부 등 → 폴백 */ }
+        }
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch { ok = false; }
+        document.body.removeChild(ta);
+        return ok;
     }
 
     function showPanel(name) {
