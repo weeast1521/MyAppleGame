@@ -97,7 +97,7 @@ public class RoomService {
             roomRedisRepository.deleteRoom(roomCode);
         } else {
             Long remaining = me.equals(hostId) ? Long.valueOf(guestId) : Long.valueOf(hostId);
-            roomRedisRepository.resetToWaiting(roomCode, remaining); // 누적(totals)·round도 여기서 초기화
+            roomRedisRepository.resetToWaiting(roomCode, remaining); // 승수(wins)·round도 여기서 초기화
 
             // 남은 사람의 ready를 복원한다. resetToWaiting이 ready SET을 통째로 지우는데(나간 사람 것을
             // 버리려고), 남은 사람은 여전히 연결된 채 대기 중이고 프론트는 ready를 연결 시 한 번만 보낸다.

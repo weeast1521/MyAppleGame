@@ -46,7 +46,7 @@ public class GameSocketMessage {
     }
 
     // 판 종료 — reason: TIME_UP(타이머) / OPPONENT_LEFT(Step 12 몰수) / ABORTED(중단).
-    // scores = 이번 판, totalScores = 방 단위 누적(연전), results = userId → WIN/LOSE/DRAW…
+    // scores = 이번 판, wins = 이 방에서 같은 상대와 쌓은 승수(연전, 이탈 시 초기화), results = userId → WIN/LOSE/DRAW…
     // winnerUserId는 무승부면 null. (Long 키는 JSON에서 문자열이 된다 — 프론트도 문자열로 비교)
     public record GameEnd(
             String type,
@@ -54,14 +54,14 @@ public class GameSocketMessage {
             int round,
             String reason,
             Map<Long, Integer> scores,
-            Map<Long, Integer> totalScores,
+            Map<Long, Integer> wins,
             Map<Long, String> results,
             Long winnerUserId
     ) {
         public static GameEnd of(Long matchId, int round, String reason,
-                                 Map<Long, Integer> scores, Map<Long, Integer> totalScores,
+                                 Map<Long, Integer> scores, Map<Long, Integer> wins,
                                  Map<Long, String> results, Long winnerUserId) {
-            return new GameEnd("GAME_END", matchId, round, reason, scores, totalScores, results, winnerUserId);
+            return new GameEnd("GAME_END", matchId, round, reason, scores, wins, results, winnerUserId);
         }
     }
 
