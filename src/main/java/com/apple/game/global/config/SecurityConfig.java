@@ -24,7 +24,9 @@ public class SecurityConfig {
     };
 
     private static final String[] STATIC_PATHS = {
-            "/", "/index.html", "/js/**", "/style.css"
+            "/", "/index.html", "/js/**", "/style.css",
+            // 브라우저가 자동 요청하는 아이콘 — 막혀 있으면 콘솔에 401이 매 페이지 로드마다 찍힌다
+            "/favicon.svg", "/favicon.ico"
     };
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;

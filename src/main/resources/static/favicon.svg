@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 사과: 몸통 + 잎 + 꼭지 -->
+  <path d="M32 18c-6-6-18-4-20 8-2 12 6 24 12 28 3 2 5 1 8 0 3 1 5 2 8 0 6-4 14-16 12-28-2-12-14-14-20-8z" fill="#e5322d"/>
+  <path d="M33 16c1-6 5-10 11-10-1 6-5 10-11 10z" fill="#3fa34d"/>
+  <rect x="31" y="9" width="2.5" height="9" rx="1" fill="#6b3e1e"/>
+  <ellipse cx="24" cy="30" rx="3" ry="5" fill="#fff" opacity=".35"/>
+</svg>
