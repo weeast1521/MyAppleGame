@@ -48,26 +48,27 @@ public class RoomService {
     }
 
     // 검사 + 입장을 Lua 스크립트 하나로 통합해 check와 act 사이의 틈이 사리짐
-    // 방 존재여부, 게임중 여부, 자기방 입장
+    // 방 존재여부, 게임중 여부, 정원. 이미 멤버면(새로고침·탭 닫기 후 복귀) 상태 변경 없이 REJOIN —
+    // 이후 WebSocket 연결의 ready가 재접속 처리(스냅샷)를 한다.
     public RoomResDTO.Join join(Long userId, String roomCode) {
         String result = roomRedisRepository.joinAtomic(roomCode, userId);
 
         switch (result) {
-            case "OK" -> {}
+            case "OK", "REJOIN" -> {}
             case "NOT_FOUND" -> throw new CustomException(RoomErrorCode.ROOM_NOT_FOUND);
             case "PLAYING" -> throw new CustomException(RoomErrorCode.ROOM_PLAYING);
-            case "SELF" -> throw new CustomException(RoomErrorCode.ROOM_SELF_JOIN); // host가 자기 방에 join — FULL로 뭉개면 "가득 참"으로 오해한다
             default -> throw new CustomException(RoomErrorCode.ROOM_FULL);
         }
 
         Map<Object, Object> room = roomRedisRepository.findRoom(roomCode);
         Long hostId = Long.valueOf((String) room.get("hostId"));
+        String guestRaw = (String) room.get("guestId");
 
         return new RoomResDTO.Join(
                 roomCode,
                 (String) room.get("status"),
                 toPlayerInfo(hostId),
-                toPlayerInfo(userId));
+                guestRaw == null ? null : toPlayerInfo(Long.valueOf(guestRaw))); // 호스트 단독 복귀면 guest 없음
     }
 
     public void leave(Long userId, String roomCode) {

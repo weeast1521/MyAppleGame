@@ -9,7 +9,6 @@ import org.springframework.http.HttpStatus;
 @AllArgsConstructor
 public enum RoomErrorCode implements BaseErrorCode {
     // 400
-    ROOM_SELF_JOIN(HttpStatus.BAD_REQUEST, "ROOM400", "자기 방에는 입장할 수 없습니다."),
 
     // 404
     ROOM_NOT_FOUND(HttpStatus.NOT_FOUND, "ROOM404", "존재하지 않는 방입니다."),

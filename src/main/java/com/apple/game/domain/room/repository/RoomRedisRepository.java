@@ -35,15 +35,17 @@ public class RoomRedisRepository {
 
     // Lua 스크립트 이용
     // EXISTS room:ABC123, HGET room:ABC123 status, HSET room:ABC123 guestId id
+    // 멤버 검사를 status 검사보다 먼저 두는 이유: 새로고침·탭 닫기 후 돌아온 멤버는 PLAYING 중에도
+    // 방에 다시 들어와야 재접속(ready → 스냅샷)이 가능하다. 상태를 바꾸지 않고 'REJOIN'만 돌려준다.
     private static final DefaultRedisScript<String> JOIN_SCRIPT = new DefaultRedisScript<>("""
             if redis.call('EXISTS', KEYS[1]) == 0 then
                 return 'NOT_FOUND'
             end
+            if redis.call('HGET', KEYS[1], 'hostId') == ARGV[1] or redis.call('HGET', KEYS[1], 'guestId') == ARGV[1] then
+                return 'REJOIN'
+            end
             if redis.call('HGET', KEYS[1], 'status') == 'PLAYING' then
                 return 'PLAYING'
-            end
-            if redis.call('HGET', KEYS[1], 'hostId') == ARGV[1] then
-                return 'SELF'
             end
             if redis.call('HEXISTS', KEYS[1], 'guestId') == 1 then
                 return 'FULL'
