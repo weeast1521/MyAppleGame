@@ -1,5 +1,6 @@
 package com.apple.game.global.security.jwt;
 
+import com.apple.game.domain.user.entity.Role;
 import com.apple.game.domain.user.entity.User;
 import com.apple.game.domain.user.repository.UserRepository;
 import com.apple.game.global.security.CustomUserDetails;
@@ -50,17 +51,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private void authenticate(String token) {
         Long userId = jwtTokenProvider.getUserId(token);
+        Role role = jwtTokenProvider.getRole(token);
 
-        // A안: role 이 토큰에 없으므로 매 요청 DB 에서 사용자를 읽는다 (비용은 Step 14 에서 측정)
-        User user = userRepository.findById(userId).orElse(null);
-
-        if (user == null) {
-            // 서명은 유효하지만 탈퇴 등으로 사라진 사용자 → 인증하지 않고 넘긴다
-            log.debug("존재하지 않는 사용자의 토큰입니다. userId={}", userId);
-            return;
+        // B안(Step 14): role이 토큰 클레임에 있으면 DB를 읽지 않는다.
+        // 측정 근거(docs/db_performance.md E4): A안은 모든 인증 요청에 users SELECT 1번이 붙어
+        // 200 VU 부하에서 처리량 1406 → 840 req/s, p95 142 → 231 ms. 커넥션 풀(10)이 그 SELECT로 포화.
+        // 트레이드오프: 탈퇴·권한 변경이 액세스 토큰 만료(30분)까지 반영되지 않는다 — 재발급이 DB를 읽어 따라잡는다.
+        if (role == null) {
+            // 전환기: 이 배포 전에 발급된 토큰(role 클레임 없음)은 예전처럼 DB 조회로 처리
+            User user = userRepository.findById(userId).orElse(null);
+            if (user == null) {
+                log.debug("존재하지 않는 사용자의 토큰입니다. userId={}", userId);
+                return;
+            }
+            role = user.getRole();
         }
 
-        CustomUserDetails principal = new CustomUserDetails(user);
+        CustomUserDetails principal = new CustomUserDetails(userId, role);
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));

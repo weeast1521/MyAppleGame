@@ -1,6 +1,7 @@
 package com.apple.game.global.security.jwt;
 
 
+import com.apple.game.domain.user.entity.Role;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
@@ -31,24 +32,28 @@ public class JwtTokenProvider {
         this.refreshTokenExpiration = properties.refreshTokenExpiration();
     }
 
+    public static final String ROLE_CLAIM = "role";
+
     // ----- 발급 -----
-    public String createAccessToken(Long userId) {
-        return createToken(userId, accessTokenExpiration);
+    // 액세스 토큰에 role을 싣는다(Step 14 B안). 인증 필터가 매 요청 users를 읽지 않아도 권한을 알 수 있다.
+    // 트레이드오프: 권한 변경·차단이 이 토큰의 만료(30분)까지 반영되지 않는다 — 재발급(refresh)은 DB를 다시 읽으므로 그때 반영.
+    public String createAccessToken(Long userId, Role role) {
+        return createToken(userId, role, accessTokenExpiration);
     }
 
     public String createRefreshToken(Long userId) {
-        return createToken(userId, refreshTokenExpiration);
+        return createToken(userId, null, refreshTokenExpiration);
     }
 
-    private String createToken(Long userId, Duration ttl) {
+    private String createToken(Long userId, Role role, Duration ttl) {
         Instant now = Instant.now();
 
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(String.valueOf(userId)) // sub = userId
                 .issuedAt(Date.from(now)) // iat
-                .expiration(Date.from(now.plus(ttl))) // exp
-                .signWith(secretKey)
-                .compact();
+                .expiration(Date.from(now.plus(ttl))); // exp
+        if (role != null) builder.claim(ROLE_CLAIM, role.name());
+        return builder.signWith(secretKey).compact();
     }
 
     // ----- 검증 -----
@@ -71,6 +76,12 @@ public class JwtTokenProvider {
 
     public Long getUserId(String token) {
         return Long.valueOf(parseClaims(token).getSubject());
+    }
+
+    // role 클레임. 이 배포 이전에 발급된 토큰(클레임 없음)이면 null — 필터가 DB 조회로 폴백한다(전환기 호환)
+    public Role getRole(String token) {
+        String v = parseClaims(token).get(ROLE_CLAIM, String.class);
+        return v == null ? null : Role.valueOf(v);
     }
 
     public Instant getExpiration(String token) {
