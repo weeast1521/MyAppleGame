@@ -64,6 +64,25 @@ class RoomRejoinAfterLeaveTest {
     }
 
     @Test
+    @DisplayName("멤버는 게임 중(PLAYING)에도 join하면 REJOIN — 상태는 바뀌지 않고, 비멤버는 여전히 PLAYING으로 거절")
+    void memberCanRejoinWhilePlaying() {
+        assertThat(roomRedisRepository.joinAtomic(roomCode, GUEST_ID)).isEqualTo("OK");
+        assertThat(roomRedisRepository.readyAtomic(roomCode, GUEST_ID)).isEqualTo("START:1");
+
+        assertThat(roomRedisRepository.joinAtomic(roomCode, GUEST_ID)).isEqualTo("REJOIN"); // 새로고침한 게스트
+        assertThat(roomRedisRepository.joinAtomic(roomCode, HOST_ID)).isEqualTo("REJOIN");  // 새로고침한 호스트
+        assertThat(roomRedisRepository.findRoom(roomCode)).containsEntry("status", "PLAYING").containsEntry("guestId", String.valueOf(GUEST_ID));
+        assertThat(roomRedisRepository.joinAtomic(roomCode, 920_009L)).isEqualTo("PLAYING"); // 제3자
+    }
+
+    @Test
+    @DisplayName("호스트 혼자 대기 중 탭을 닫고 돌아오면 REJOIN — 자기 방을 되찾는다")
+    void hostCanRejoinOwnWaitingRoom() {
+        assertThat(roomRedisRepository.joinAtomic(roomCode, HOST_ID)).isEqualTo("REJOIN");
+        assertThat(roomRedisRepository.findRoom(roomCode)).containsEntry("status", "WAITING");
+    }
+
+    @Test
     @DisplayName("호스트가 나가면 남은 게스트가 호스트로 승격되고, 그의 ready도 보존된다")
     void hostLeavesGuestPromotedWithReady() {
         assertThat(roomRedisRepository.joinAtomic(roomCode, GUEST_ID)).isEqualTo("OK");
