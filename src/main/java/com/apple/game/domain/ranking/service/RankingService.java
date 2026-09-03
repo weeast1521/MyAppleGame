@@ -48,8 +48,10 @@ public class RankingService {
         offset = Math.max(0, Math.min(offset, MAX_RANGE));
         size = Math.max(1, Math.min(size, MAX_RANGE - offset));
 
-        // 캐시 히트 -> redis 응답 / 미스 -> db 집계로 응답 + redis 재적재
-        RankingResDTO.RankingPage result = rankingRedisRepository.exists(key)
+        // 캐시 히트 -> redis 응답 / 미스 -> db 집계로 응답 + redis 재적재.
+        // 판정은 '키 존재'가 아니라 'warm-up 완료 플래그' — 키 존재로 판정하면 warm-up 전에 끝난 게임 한 판이
+        // 만든 멤버 1명짜리 ZSet을 완전한 캐시로 믿어 영원히 DB로 돌아가지 않는다 (#12).
+        RankingResDTO.RankingPage result = rankingRedisRepository.isWarmed(key)
                 ? loadFromRedis(key, userId, offset, size)
                 : loadFromDbAndWarmUp(key, period, today, userId, offset, size);
 
