@@ -26,6 +26,8 @@ const Battle = (() => {
     let timerId = null;
     let flashId = null;
 
+    const REJOIN_KEY = 'battleRoomCode'; // 새로고침 복귀용 — 탭 단위(sessionStorage), 나가기 시 삭제
+
     function init() {
         board = createBoard({
             wrapEl: $('battleBoardWrap'),
@@ -42,6 +44,30 @@ const Battle = (() => {
             $('btnCopyCode').textContent = ok ? '복사됨' : '복사 실패';
             setTimeout(() => ($('btnCopyCode').textContent = '복사'), 1200);
         });
+        // 새로고침 복귀: 직전에 있던 방이 기억돼 있으면 자동으로 다시 들어간다 (유예 15초 안에)
+        try {
+            const saved = sessionStorage.getItem(REJOIN_KEY);
+            if (saved && Auth.isLoggedIn) rejoinRoom(saved);
+        } catch { /* storage 불가 환경 — 수동 입장 */ }
+    }
+
+    async function rejoinRoom(code) {
+        try {
+            const r = await apiFetch(`/api/rooms/${code}/join`, { method: 'POST' });
+            showTab?.('battle');
+            enterRoom(r.roomCode);
+            applyJoinInfo(r);
+            $('battleStatus').textContent = r.status === 'PLAYING' ? '재접속 중…' : '방에 복귀했습니다 — 상대를 기다리는 중…';
+        } catch {
+            try { sessionStorage.removeItem(REJOIN_KEY); } catch { /* ignore */ }
+        }
+    }
+
+    // join 응답에서 '나'가 아닌 쪽을 상대로 — 호스트로 복귀하면 host가 나 자신이다
+    function applyJoinInfo(r) {
+        const me = String(Auth.user?.userId ?? '');
+        const other = [r.host, r.guest].find((p) => p && String(p.userId) !== me);
+        if (other) setOpponent(String(other.userId), other.nickname);
     }
 
     // 클립보드 복사. navigator.clipboard는 보안 컨텍스트(HTTPS·localhost) 전용이라
@@ -88,14 +114,15 @@ const Battle = (() => {
         try {
             const r = await apiFetch(`/api/rooms/${code}/join`, { method: 'POST' });
             enterRoom(r.roomCode);
-            if (r.host) setOpponent(String(r.host.userId), r.host.nickname);
-            $('battleStatus').textContent = '입장 완료 — 게임이 곧 시작됩니다…';
+            applyJoinInfo(r);
+            $('battleStatus').textContent = r.status === 'PLAYING' ? '재접속 중…' : '입장 완료 — 게임이 곧 시작됩니다…';
         } catch (e) {
             $('battleMsg').textContent = e.message;
         }
     }
 
     async function leaveRoom() {
+        try { sessionStorage.removeItem(REJOIN_KEY); } catch { /* ignore */ }
         try {
             await apiFetch(`/api/rooms/${roomCode}/leave`, { method: 'DELETE' });
         } catch { /* 이미 정리된 방 — 무시 */ }
@@ -105,6 +132,7 @@ const Battle = (() => {
 
     function enterRoom(code) {
         roomCode = code;
+        try { sessionStorage.setItem(REJOIN_KEY, code); } catch { /* ignore */ }
         myId = String(Auth.user?.userId ?? '');
         players = {};
         scores = {};
