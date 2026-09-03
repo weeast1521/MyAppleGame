@@ -10,7 +10,6 @@ import com.apple.game.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -91,10 +90,10 @@ public class RankingService {
             String key, RankingPeriod period, LocalDate today, Long userId, int offset, int size) {
         LocalDateTime from = period.aggregateFrom(today);
 
-        // PageRequest.of(0, offset + size)에서 unpaged()로 전체 조희를 함 -> 이전에는 db에서 count를 했지만 이제는 ZSet으로 전체를 조회하기 때문
+        // 전체를 조회하는 이유: 결과 전원을 ZSet에 적재(warm-up)해야 이후 조회가 Redis에서 끝난다
         List<SoloRecordRepository.RankingRow> rows = (from == null)
-                ? soloRecordRepository.findAllTimeRanking(Pageable.unpaged())
-                : soloRecordRepository.findWeeklyRanking(from, Pageable.unpaged());
+                ? soloRecordRepository.findAllTimeRanking()
+                : soloRecordRepository.findWeeklyRanking(from);
 
         Map<Long, Integer> scores = rows.stream().collect(Collectors.toMap(
                 SoloRecordRepository.RankingRow::getUserId,

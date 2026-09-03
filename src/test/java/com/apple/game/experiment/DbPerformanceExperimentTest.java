@@ -230,6 +230,32 @@ class DbPerformanceExperimentTest {
         }
     }
 
+    @Test
+    @DisplayName("E2b. 인덱스·재작성 적용 후 서비스 경로 (캐시 미스 전체 소요)")
+    void e2b_serviceAfterIndexAndRewrite() {
+        h("E2b. 적용 후 — RankingService 캐시 미스 경로 (V3 인덱스 + 파생 테이블 네이티브 쿼리)");
+        String key = "ranking:solo:alltime";
+        double[] runs = new double[3];
+        for (int i = 0; i < 3; i++) {
+            redis.delete(List.of(key, RankingRedisRepository.warmedKey(key)));
+            long s = System.nanoTime();
+            rankingService.getRanking(null, "alltime", 0, 100);
+            runs[i] = (System.nanoTime() - s) / 1_000_000.0;
+        }
+        Arrays.sort(runs);
+        p(String.format("- 캐시 미스(DB 집계 + 1만 명 ZADD warm-up): %.1f ms (중앙값 3회) — 적용 전 1,829 ms", runs[1]));
+        String weeklyKey = "ranking:solo:weekly:" + java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).get(java.time.temporal.WeekFields.ISO.weekBasedYear())
+                + String.format("%02d", java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).get(java.time.temporal.WeekFields.ISO.weekOfWeekBasedYear()));
+        for (int i = 0; i < 3; i++) {
+            redis.delete(List.of(weeklyKey, RankingRedisRepository.warmedKey(weeklyKey)));
+            long s = System.nanoTime();
+            rankingService.getRanking(null, "weekly", 0, 100);
+            runs[i] = (System.nanoTime() - s) / 1_000_000.0;
+        }
+        Arrays.sort(runs);
+        p(String.format("- 주간 캐시 미스: %.1f ms (중앙값 3회)", runs[1]));
+    }
+
     // ---------- E3. N+1 ----------
 
     @Test
