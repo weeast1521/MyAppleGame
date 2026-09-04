@@ -93,7 +93,7 @@ public class AuthService {
 
     // 토큰 발급 + RefreshToken 저장 진입점
     private LoginResDTO.Login issueTokens(User user) {
-        String accessToken = jwtTokenProvider.createAccessToken(user.getId());
+        String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getRole());
         String refreshToken = jwtTokenProvider.createRefreshToken(user.getId());
 
         // 1유저 1토큰 정책: 기존 토큰을 지우고 새로 저장 (다중 기기 로그인은 허용하지 않는다)

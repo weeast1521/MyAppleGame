@@ -41,18 +41,24 @@ public interface SoloRecordRepository extends JpaRepository<SoloRecord, Long> {
 
     // ---------------- Ranking 조회 -------------------
 
-    @Query("SELECT u.id AS userId, u.nickname AS nickname, MAX(r.score) AS bestScore "
-            + "FROM SoloRecord r JOIN r.user u "
-            + "GROUP BY u.id, u.nickname "
-            + "ORDER BY max(r.score) DESC")
-    List<RankingRow> findAllTimeRanking(Pageable pageable);
+    // 랭킹 집계 — warm-up용 전체 조회(캐시 미스 시에만 실행).
+    // 네이티브 + 파생 테이블인 이유(docs/db_performance.md E2):
+    //  JPQL "FROM SoloRecord r JOIN r.user u GROUP BY u.id"는 옵티마이저가 users를 바깥에 두고 유저마다
+    //  solo_record를 조인해 200만 행을 만든 뒤 집계한다(인덱스가 있어도 587ms).
+    //  집계를 먼저 하면 (user_id, score) 인덱스의 skip scan으로 1만 행만 나오고, 거기에 users PK 조회 1만 번 → 29ms.
+    //  JPQL은 조인 순서를 강제할 수 없어 SQL로 내렸다. 별칭(userId·nickname·bestScore)이 RankingRow 프로젝션과 일치해야 한다.
+    @Query(value = "SELECT u.id AS userId, u.nickname AS nickname, t.best AS bestScore "
+            + "FROM (SELECT user_id, MAX(score) AS best FROM solo_record GROUP BY user_id) t "
+            + "JOIN users u ON u.id = t.user_id "
+            + "ORDER BY t.best DESC", nativeQuery = true)
+    List<RankingRow> findAllTimeRanking();
 
-    @Query("select u.id AS userId, u.nickname AS nickname, MAX(r.score) AS bestScore "
-            + "FROM SoloRecord r JOIN r.user u "
-            + "WHERE r.createdAt >= :from "
-            + "GROUP BY u.id, u.nickname "
-            + "ORDER BY max(r.score) DESC")
-    List<RankingRow> findWeeklyRanking(@Param("from") LocalDateTime from, Pageable pageable);
+    // 주간: created_at 범위를 파생 테이블 안에서 자르면 (created_at, user_id, score) 커버링 인덱스만 읽는다
+    @Query(value = "SELECT u.id AS userId, u.nickname AS nickname, t.best AS bestScore "
+            + "FROM (SELECT user_id, MAX(score) AS best FROM solo_record WHERE created_at >= :from GROUP BY user_id) t "
+            + "JOIN users u ON u.id = t.user_id "
+            + "ORDER BY t.best DESC", nativeQuery = true)
+    List<RankingRow> findWeeklyRanking(@Param("from") LocalDateTime from);
 
     // 내 주간 최고점 — 기록 없으면 null
     @Query("SELECT MAX(r.score) AS bestScore "
