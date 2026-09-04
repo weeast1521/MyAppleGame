@@ -48,6 +48,26 @@ public class RankingRedisRepository {
         return Boolean.TRUE.equals(redisTemplate.hasKey(warmedKey(key)));
     }
 
+    // ---- warm-up 단일 실행(single-flight) 락 (Step 15) ----
+    // 캐시가 빈 순간 들어온 N개 요청이 각자 200만 건 집계를 돌리는 캐시 스탬피드를 막는다.
+    // 부하 테스트에서 실행 횟수가 정확히 HikariCP 풀 크기만큼(10, 50) 나왔다 — 풀이 우연히 상한 노릇을 했을 뿐
+    // 풀을 키우면 오히려 집계가 그만큼 늘어 p95 2초 → 12초로 악화됐다(docs/load_test.md).
+    // 락은 Redis에 둔다 — 로컬 락(synchronized)은 인스턴스가 늘면 인스턴스 수만큼 다시 스탬피드가 된다.
+    // TTL은 락 보유자가 죽었을 때의 보험. 정상 경로에서는 finally에서 지운다.
+    private static final Duration WARM_UP_LOCK_TTL = Duration.ofSeconds(30);
+
+    public static String warmUpLockKey(String key) { return key + ":warmup-lock"; }
+
+    // SET key 1 NX EX 30 — 획득 성공 시 true. 실패면 다른 요청이 이미 warm-up 중이다.
+    public boolean tryLockWarmUp(String key) {
+        return Boolean.TRUE.equals(
+                redisTemplate.opsForValue().setIfAbsent(warmUpLockKey(key), "1", WARM_UP_LOCK_TTL));
+    }
+
+    public void unlockWarmUp(String key) {
+        redisTemplate.delete(warmUpLockKey(key));
+    }
+
     // ZREVRANGE key offset (offset+size-1) WITHSCORES — 반환 Set은 순서 보존(LinkedHashSet)
     public Set<ZSetOperations.TypedTuple<String>> topRange(String key, int offset, int size) {
         return redisTemplate.opsForZSet().reverseRangeWithScores(key, offset, offset + size - 1);

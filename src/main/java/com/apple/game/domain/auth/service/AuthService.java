@@ -16,6 +16,7 @@ import com.apple.game.domain.user.repository.UserRepository;
 import com.apple.game.global.exception.CustomException;
 import com.apple.game.global.security.jwt.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,7 +45,18 @@ public class AuthService {
         User user = User
                 .createLocalUser(request.email(), passwordEncoder.encode(request.password()), request.nickname());
 
-        return SignupResDTO.Signup.from(userRepository.save(user));
+        // 위 exists 검사와 INSERT 사이에는 틈이 있다 — 같은 이메일로 동시에 가입하면 둘 다 검사를 통과하고
+        // UNIQUE 제약이 한쪽을 막는다(Step 15 부하 테스트에서 100명 중 9명이 여기까지 도달).
+        // 제약 위반은 버그가 아니라 "먼저 온 쪽이 이겼다"는 뜻이므로 선 조회 때와 같은 409로 답한다.
+        // flush를 여기서 해야 예외가 커밋 시점이 아니라 이 try 안에서 터진다.
+        try {
+            return SignupResDTO.Signup.from(userRepository.saveAndFlush(user));
+        } catch (DataIntegrityViolationException e) {
+            String cause = String.valueOf(e.getMostSpecificCause().getMessage());
+            if (cause.contains("uk_users_nickname")) throw new CustomException(UserErrorCode.NICKNAME_CONFLICT);
+            if (cause.contains("uk_users_email")) throw new CustomException(AuthErrorCode.EMAIL_CONFLICT);
+            throw e; // 그 외 제약은 GlobalExceptionHandler가 COMMON409로
+        }
     }
 
     @Transactional

@@ -22,6 +22,11 @@ spring:
   flyway:
     enabled: true
 
+# p6spy(Step 15)는 로컬 분석용 — 프록시 오버헤드와 쿼리 전문 로그를 prod에 남기지 않는다.
+decorator:
+  datasource:
+    enabled: false
+
 # Nginx 뒤에서 동작하므로 X-Forwarded-* 헤더를 신뢰해야
 # 리다이렉트 URL·스킴(추후 https)이 프록시 바깥 기준으로 올바르게 만들어진다.
 server:

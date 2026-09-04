@@ -5,6 +5,7 @@ import com.apple.game.global.apiPayload.code.BaseErrorCode;
 import com.apple.game.global.apiPayload.code.GeneralErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -56,6 +57,15 @@ public class GlobalExceptionHandler {
     public ResponseEntity<CustomResponse<Void>> handleAccessDenied(
             AccessDeniedException e, HttpServletRequest request) {
         return toResponse(GeneralErrorCode.FORBIDDEN, e, request);
+    }
+
+    // DB UNIQUE/FK 제약 위반 — "선 조회 후 INSERT" 사이의 틈을 동시 요청이 뚫었을 때 여기까지 온다 (Step 15 동시 가입 폭주에서 재현).
+    // 제약이 막아낸 건 정상 동작이므로 500(버그)이 아니라 409(충돌)로 답한다. 도메인이 제약 이름으로 더 구체적인
+    // 코드를 줄 수 있으면 서비스에서 먼저 CustomException으로 바꾼다(AuthService.signup 참고). 이건 그 뒤의 공통 방어선.
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<CustomResponse<Void>> handleDataIntegrity(
+            DataIntegrityViolationException e, HttpServletRequest request) {
+        return toResponse(GeneralErrorCode.CONFLICT, e, request);
     }
 
     // 최종 방어선
