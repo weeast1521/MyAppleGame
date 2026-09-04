@@ -36,6 +36,10 @@ dependencies {
 	implementation 'org.flywaydb:flyway-core'
 	runtimeOnly 'org.flywaydb:flyway-mysql'
 
+	// Step 15 — 쿼리 단위 실행 시간 로깅. DataSource를 감싸는 프록시라 prod에서는 끈다(application-prod.yaml).
+	// show-sql은 SQL만 보여주고 "얼마나 걸렸는지"는 모른다 — 부하에서 느린 쿼리를 찾으려면 시간이 있어야 한다.
+	implementation 'com.github.gavlyukovskiy:p6spy-spring-boot-starter:1.10.0'
+
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'com.mysql:mysql-connector-j'
 

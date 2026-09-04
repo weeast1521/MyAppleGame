@@ -23,6 +23,9 @@ public enum GeneralErrorCode implements BaseErrorCode {
     NOT_FOUND(HttpStatus.NOT_FOUND, "COMMON404", "요청한 자원을 찾을 수 없습니다."),
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "COMMON405", "지원하지 않는 HTTP 메서드입니다."),
 
+    // 409 — DB UNIQUE 제약이 잡은 충돌. 선(先) 조회 검사를 동시 요청이 뚫었을 때의 최후 방어선 응답 (Step 15)
+    CONFLICT(HttpStatus.CONFLICT, "COMMON409", "이미 존재하는 값입니다."),
+
     // 500
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON500", "서버 내부 오류가 발생했습니다.");
 
