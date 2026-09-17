@@ -143,6 +143,7 @@ services:
       - grafana-data:/var/lib/grafana
       # 데이터소스·대시보드 선언(#32). 클릭 설정은 grafana-data 볼륨에만 사는 '상태'라 재현이 안 된다.
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
     # 512m — 대시보드 렌더링은 브라우저가 하고 Grafana는 쿼리를 중계한다(access: proxy).
     # Phase 3에서 대시보드가 늘어도 메모리는 크게 안 변하는 쪽.
     mem_limit: 512m
