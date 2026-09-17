@@ -178,6 +178,40 @@ CPU 2코어라 부하 테스트·다중 인스턴스 실험 시 앱끼리 경합
 - **main 브랜치 보호**: PR 필수(승인 0) · `test` 체크 성공 필수 · force push/삭제 금지 · 관리자 포함(enforce_admins). 필수 체크를 쓰려면 워크플로에 `pull_request` 트리거가 있어야 한다(#25 — 없으면 체크가 영원히 미보고되어 머지 교착).
 - **수동 실행 전용 테스트는 환경변수 게이트**: `CLEAR_BENCH=true`(벤치마크) · `SOLO_DUMMY=true`(인덱스 실험용 더미 200만 건). `@Disabled` 주석 토글은 되돌림을 잊으면 CI가 그대로 실행한다(#26에서 25분→1분대로 단축된 원인).
 
+### 9-1. 배포가 다루는 범위 — 앱만 (09-18, #46)
+
+`deploy.sh`는 `up -d --no-deps app-${NEW}`로 **앱 컨테이너만** 교체한다. compose 파일의
+인프라 서비스(mysql·redis·nginx·prometheus·grafana·node-exporter) 설정을 바꿔도
+배포로는 반영되지 않는다 — 의도된 제약이다.
+
+이유: `--no-deps`가 없으면 compose가 `depends_on`의 mysql·redis까지 챕기고, 그 서비스의
+설정이 바뀌어 있으면 재생성한다. 09-18 00:10 배포가 그 사례다(§10 참고) — 무중단 배포
+도중 DB·Redis가 교체되어 서빙 중이던 구 색이 30초간 둘을 모두 잃었다.
+blue-green의 무중단 보장은 앱 컨테이너에만 성립하므로, 배포가 할 수 있는 일을 그 범위로 좁혔다.
+
+**인프라 설정을 바꿨을 때의 적용 절차** (VM `/opt/applegame`에서 수동):
+
+```bash
+git pull --ff-only origin main          # 배포가 이미 했다면 생략 가능
+
+# 사용자 영향이 없는 서비스 — 아무 때나
+docker compose -f docker-compose.prod.yml up -d prometheus grafana node-exporter
+
+# nginx — 재생성하는 순간 모든 연결이 끊긴다(프록시 본체). 한가한 시간에.
+#   설정 파일(nginx/*.conf)만 바꾼 경우는 재생성 없이 reload로 충분하다:
+#   docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+docker compose -f docker-compose.prod.yml up -d nginx
+
+# mysql·redis — 재시작 동안 서비스가 조회에 실패한다. 의도한 시점에만.
+#   데이터는 named volume(mysql-data·redis-data)에 있어 컨테이너 교체로 사라지지 않는다.
+docker compose -f docker-compose.prod.yml up -d mysql redis
+
+docker stats --no-stream   # LIMIT 열로 mem_limit 적용 확인
+```
+
+배포 전 가드: `deploy.sh`는 `--no-deps`로 `depends_on`의 대기 보장을 잃으므로, 시작 시
+`docker inspect`로 mysql이 healthy·redis가 running인지 확인하고 아니면 즉시 실패한다.
+
 ## 10. 프로덕션 트러블슈팅 기록 (09-02)
 
 셋 다 **"로컬에서는 재현 불가"** — 프록시·HTTP 실서버 구조에서만 드러났다. 상세는 노션 트러블슈팅 문서.
