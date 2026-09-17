@@ -30,7 +30,7 @@
 |---|---|
 | Language / Runtime | Java 21 |
 | Framework | Spring Boot 3.4.1 (Web, WebSocket, Security, Validation) |
-| 인증 | JWT (jjwt) + 일반 회원가입(BCrypt) + 카카오/네이버 소셜 로그인 (인가코드 직접 교환 방식) |
+| 인증 | JWT (jjwt) + 일반 회원가입/로그인 (BCrypt) — 소셜 로그인(OAuth2) 미사용 |
 | ORM / DB | Spring Data JPA, MySQL |
 | Cache / 실시간 상태 | Redis (Spring Data Redis) |
 | API 문서 | SpringDoc OpenAPI (Swagger UI) |
@@ -79,23 +79,25 @@
 
 ### 3-4. 인증 설계
 
-일반 회원가입과 소셜 로그인(카카오·네이버)이 공존하는 구조입니다.
+**이메일/비밀번호 기반 일반 회원가입·로그인만 사용합니다. 소셜 로그인(OAuth2)은 구현했다가 제거했습니다.**
 
 ```
 [일반 회원가입/로그인]
-  프론트 ── email/password ──► 백엔드 (BCrypt 검증) ──► JWT 발급
-
-[소셜 로그인 — 인가코드 직접 교환 방식]
-  프론트(정적 페이지) ── 카카오/네이버 인가 페이지로 리다이렉트
-  프론트 ◄── redirect URI로 인가코드 수신
-  프론트 ── 인가코드 ──► 백엔드
-  백엔드 ── 토큰 교환 + 사용자 정보 조회 (RestClient) ──► 카카오/네이버 API
-  백엔드 ── 최초 로그인이면 자동 회원가입 ──► JWT 발급
+  프론트 ── email/password ──► 백엔드 (BCrypt 검증) ──► JWT(액세스/리프레시) 발급
+  프론트 ── Authorization: Bearer ──► 백엔드 (REST)
+  프론트 ── STOMP CONNECT 헤더 ──► 백엔드 (WebSocket)
 ```
 
-- `spring-boot-starter-oauth2-client`의 자동 플로우 대신 **백엔드가 직접 토큰 교환을 수행** — 인가코드가 프론트를 거쳐 백엔드로 전달되는 SPA 친화적 구조.
-- 발급된 JWT는 REST는 `Authorization: Bearer` 헤더로, WebSocket은 STOMP CONNECT 헤더로 전달합니다.
-- 같은 유저가 LOCAL/KAKAO/NAVER 어느 방식으로 가입했는지는 `users.provider`로 구분합니다.
+#### OAuth2를 쓰지 않는 이유
+
+초기에는 카카오·네이버 인가코드 직접 교환 방식의 소셜 로그인을 구현했지만, **테스트와 실제 사용자 확보 관점에서 일반 로그인이 더 낫다고 판단해 제거했습니다.**
+
+- **테스트 비용** — 소셜 로그인은 인가 페이지 리다이렉트가 끼어들어 자동화가 어렵습니다. 부하 테스트(k6)나 동시성 통합 테스트에서 계정 N개를 즉시 만들어 토큰을 받는 흐름이 필요한데, 일반 회원가입은 `POST /api/auth/signup` → `POST /api/auth/login` 두 번으로 끝납니다.
+- **가입 장벽** — 소셜 로그인은 심사·검수를 통과한 앱 등록과 도메인/redirect URI 확정이 전제입니다. 아직 도메인이 유동적인 단계에서 외부 플랫폼 설정에 묶이는 비용이 실제 사용자 유입 이득보다 컸습니다.
+- **동의 항목 부담** — 이메일·닉네임을 받기 위해 동의 항목을 요구해야 하고, 그 자체가 이탈 요인이 됩니다. 반면 이 프로젝트는 동시성·DB 성능이 학습 주제이지 인증 연동이 주제가 아닙니다.
+- **결론** — 인증은 JWT + BCrypt로 단순하게 유지하고, 학습·측정 대상인 게임 로직과 인프라에 집중합니다.
+
+다만 `users.provider` 컬럼(`LOCAL`)은 남겨두어, 이후 소셜 로그인을 다시 붙일 때 스키마 마이그레이션 없이 확장할 수 있게 했습니다. 현재 모든 계정은 `LOCAL`이며, 로그인 시 `provider != LOCAL`이면 거부합니다.
 
 ## 4. 아키텍처 개요
 
@@ -149,7 +151,7 @@ cp src/main/resources/application-local.yaml.example src/main/resources/applicat
 src/main/java/com/apple/game
 ├── BackendApplication.java
 ├── domain
-│   ├── auth        # 인증 (일반 로그인 + 카카오/네이버 인가코드 교환, JWT 발급)
+│   ├── auth        # 인증 (일반 회원가입/로그인, JWT 발급·재발급)
 │   ├── user        # 회원
 │   ├── solo        # 솔로 모드 기록
 │   ├── room        # 대전 방 관리
@@ -166,7 +168,7 @@ src/main/java/com/apple/game
 
 ## 8. 학습 로드맵 (마일스톤)
 
-- [ ] **M0. 인증** — 일반 회원가입/로그인(JWT + BCrypt), 카카오/네이버 소셜 로그인 (인가코드 직접 교환)
+- [ ] **M0. 인증** — 일반 회원가입/로그인 (JWT + BCrypt). 소셜 로그인(OAuth2)은 테스트·사용자 확보 편의를 위해 제외
 - [ ] **M1. 솔로 모드** — 보드 생성/검증 로직, 기록 저장, 기본 랭킹 (JPA + MySQL)
 - [ ] **M2. 대전 모드 기본** — WebSocket(STOMP) 연결, 방 생성/입장, 보드 동기화
 - [ ] **M3. 동시성 제어** — 동시 제거 경합 재현 → Lua 스크립트/분산 락으로 해결, 동시성 테스트 작성
