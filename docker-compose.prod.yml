@@ -76,6 +76,9 @@ services:
     command:
       - --skip-log-bin
       - --innodb-buffer-pool-size=2G
+    # 상한 3g = buffer pool 2G + 그 밖(커넥션별 정렬·조인 버퍼, 임시 테이블, 스레드) 1g.
+    # buffer pool만 계산하면 부하 시 커넥션이 늘 때 상한을 넘는다 — 앱의 힙/힙 밖 관계와 같은 구조다.
+    mem_limit: 3g
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -103,6 +106,11 @@ services:
       - 1gb
       - --maxmemory-policy
       - noeviction
+    # 상한 1.5g = maxmemory 1gb + 오버헤드 0.5g.
+    # 오버헤드는 AOF 재작성(fork 시 COW로 일시적으로 메모리가 늘어난다)과 클라이언트 버퍼 몫이다.
+    # maxmemory와 같은 1g로 잡으면 AOF rewrite 중에 컨테이너가 죽는다 —
+    # noeviction이라 데이터를 지우지 않고 버티는 설계와 짝이 되는 여유분.
+    mem_limit: 1.5g
     volumes:
       - redis-data:/data
     restart: unless-stopped
