@@ -47,6 +47,8 @@ services:
       - ./nginx:/etc/nginx/conf.d:ro
     depends_on:
       - grafana
+    # 128m — nginx는 요청을 흘려보내기만 하고 상태를 들지 않는다. 워커 프로세스 + 연결 버퍼 몫.
+    mem_limit: 128m
     restart: unless-stopped
 
   # blue/green 두 색 중 한쪽만 기동한다 (--profile blue|green).
@@ -121,6 +123,9 @@ services:
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
+    # 1g — 최근 2시간치 시계열을 메모리(head block)에 들고 있다가 디스크로 내린다.
+    # retention 15d라 대부분은 디스크(prometheus-data)에 있고 메모리는 head block + 쿼리 작업공간 몫.
+    mem_limit: 1g
     restart: unless-stopped
 
   grafana:
@@ -134,6 +139,9 @@ services:
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     volumes:
       - grafana-data:/var/lib/grafana
+    # 512m — 대시보드 렌더링은 브라우저가 하고 Grafana는 쿼리를 중계한다(access: proxy).
+    # Phase 3에서 대시보드가 늘어도 메모리는 크게 안 변하는 쪽.
+    mem_limit: 512m
     restart: unless-stopped
 
   node-exporter:
@@ -148,6 +156,8 @@ services:
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
       - --path.rootfs=/rootfs
+    # 64m — 스크랩 요청마다 /proc·/sys를 읽어 즉석에서 응답한다. 상태를 저장하지 않는다.
+    mem_limit: 64m
     restart: unless-stopped
 
 volumes:
