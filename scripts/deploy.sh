@@ -27,7 +27,13 @@ else
 fi
 
 $COMPOSE --profile "$NEW" pull "app-${NEW}"
-$COMPOSE --profile "$NEW" up -d "app-${NEW}"
+
+# --no-deps: 앱만 띄운다. 이 플래그가 없으면 compose가 depends_on에 적힌 mysql·redis까지
+# 함께 챙기는데, compose 파일에서 그 서비스의 설정이 바뀐 상태라면 재생성해버린다.
+# 09-18 00:10 배포가 그 사례다 — mem_limit을 추가한 커밋이 머지되자 배포가 mysql·redis를
+# 교체했고, 당시 서빙 중이던 구 색이 30초간 DB·Redis를 잃었다(#46 ③).
+# 무중단 보장의 범위를 '앱 컨테이너 교체'로 한정하고, 인프라 변경은 별도 절차로 분리한다.
+$COMPOSE --profile "$NEW" up -d --no-deps "app-${NEW}"
 
 # 헬스 대기 (최대 120초) — JRE 이미지에 curl이 없으므로 nginx(알파인)의 wget으로
 # 내부망에서 확인한다
