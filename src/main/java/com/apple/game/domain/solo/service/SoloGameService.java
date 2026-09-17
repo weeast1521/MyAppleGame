@@ -36,6 +36,10 @@ public class SoloGameService {
     private static final int TIME_LIMIT_SECONDS = 120;
     private static final int SESSION_TTL_SECONDS = TIME_LIMIT_SECONDS + 30;
 
+    // move 시각 허용 오차. 클라이언트 타이머가 250ms 간격이라(solo.js) 제한시간 직후에
+    // 완료된 드래그가 한 틱 늦게 기록될 수 있다. 정직한 플레이를 오탐하지 않을 만큼만 준다.
+    private static final long MOVE_TIME_GRACE_MS = 1_000L;
+
     private static final int DEFAULT_SIZE = 20;
     private static final int MAX_SIZE = 100;
 
@@ -75,7 +79,11 @@ public class SoloGameService {
             throw new CustomException(SoloErrorCode.ALREADY_SUBMITTED);
         }
 
-        // 4~5. 시드로 최초 보드 재구성 → moves를 순서대로 재생하며 서버가 재검증
+        // 4. moves의 시각 검증 — 좌표 재생보다 먼저. 제한시간을 넘겨 찍힌 move가 있으면
+        //    보드 로직을 돌려볼 필요 없이 거부한다.
+        validateMoveTimes(request.moves());
+
+        // 5~6. 시드로 최초 보드 재구성 → moves를 순서대로 재생하며 서버가 재검증
         GameBoard board = GameBoard.fromSeed(session.getBoardSeed());
 
         int score = 0;
@@ -154,6 +162,33 @@ public class SoloGameService {
         double averageScore = Math.round(agg.getAverageScore() * 10) / 10.0;
 
         return new SoloResDTO.Summary(agg.getBestScore(), agg.getTotalGames(), averageScore, allTimeRank);
+    }
+
+    /**
+     * moves의 시각 검증 — 두 가지를 본다.
+     *  1) 제한시간 준수: 모든 move의 elapsedMs가 [0, TIME_LIMIT + 오차] 안에 있어야 한다.
+     *     제한시간이 끝난 뒤 찍힌 move는 게임 규칙상 존재할 수 없다.
+     *  2) 단조 증가: moves는 보낸 순서대로 재생하므로 시각도 그 순서를 따라야 한다.
+     *     순서가 뒤집혔다면 클라이언트가 기록을 조립한 것이다.
+     *
+     * 한계를 분명히 해둔다 — elapsedMs는 클라이언트가 자기 시계로 적은 값이다.
+     * 이 검증은 '정직한 클라이언트가 제한시간을 넘겨 제출하는 것'을 막지만,
+     * 값을 작게 위조하는 클라이언트는 막지 못한다. 점수 자체는 좌표 재생으로 서버가
+     * 다시 계산하므로(board.clear) 위조로 얻을 수 있는 이득은 '생각할 시간'뿐이다.
+     */
+    private void validateMoveTimes(List<SoloReqDTO.Move> moves) {
+        long limitMs = TIME_LIMIT_SECONDS * 1000L + MOVE_TIME_GRACE_MS;
+        long previousMs = -1;
+
+        for (SoloReqDTO.Move move : moves) {
+            if (move.elapsedMs() < 0 || move.elapsedMs() > limitMs) {
+                throw new CustomException(SoloErrorCode.MOVES_OUT_OF_TIME);
+            }
+            if (move.elapsedMs() < previousMs) {
+                throw new CustomException(SoloErrorCode.MOVES_OUT_OF_TIME);
+            }
+            previousMs = move.elapsedMs();
+        }
     }
 
     private int normalizeSize(Integer size) {
