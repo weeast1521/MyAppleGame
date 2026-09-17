@@ -34,7 +34,17 @@ import java.util.concurrent.ThreadLocalRandom;
 public class SoloGameService {
 
     private static final int TIME_LIMIT_SECONDS = 120;
-    private static final int SESSION_TTL_SECONDS = TIME_LIMIT_SECONDS + 30;
+
+    // 제출 창 — "언제까지 제출을 받아줄까"만 결정한다. 제한시간 준수는 validateMoveTimes가
+    // 맡으므로 TTL을 넉넉히 줘도 정합성이 약해지지 않는다.
+    // 150초(= 제한시간 + 30초)였을 때는 브라우저가 타이머를 멈춘 시간을 견디지 못했다 —
+    // 뒤로가기로 페이지가 bfcache에 얼거나, 비활성 탭에서 setInterval이 조여지거나,
+    // 화면이 잠기면 클라이언트 제출이 그만큼 밀리는데 TTL은 실시간으로 흐른다(#49).
+    private static final int SESSION_TTL_SECONDS = 600;
+
+    // 이 시간을 넘겨 도착한 제출은 '브라우저가 멈췄다 돌아온' 신호다. 거부하지 않고 기록만 남긴다 —
+    // #49가 재발하는지, 확대한 제출 창이 충분한지 판단할 근거가 된다.
+    private static final long LATE_SUBMIT_LOG_THRESHOLD_MS = 30_000L;
 
     // move 시각 허용 오차. 클라이언트 타이머가 250ms 간격이라(solo.js) 제한시간 직후에
     // 완료된 드래그가 한 틱 늦게 기록될 수 있다. 정직한 플레이를 오탐하지 않을 만큼만 준다.
@@ -97,15 +107,22 @@ public class SoloGameService {
             clearedCount++;
         }
 
-        // 6. 플레이 시간 — 서버 시계 기준, 제한시간을 상한으로
-        int playTimeSeconds = (int) Math.min(
-                (System.currentTimeMillis() - session.getStartedAtMills()) / 1000,
-                TIME_LIMIT_SECONDS);
+        // 7. 플레이 시간 — 서버 시계 기준, 제한시간을 상한으로
+        long serverElapsedMs = System.currentTimeMillis() - session.getStartedAtMills();
+        int playTimeSeconds = (int) Math.min(serverElapsedMs / 1000, TIME_LIMIT_SECONDS);
+
+        // 제출이 제한시간보다 한참 늦게 도착했다면 클라이언트 타이머가 멈췄던 것이다.
+        // 이제 TTL이 넉넉해 기록은 정상 저장되지만, 얼마나 늦는지는 관측해둔다.
+        long lateMs = serverElapsedMs - TIME_LIMIT_SECONDS * 1000L;
+        if (lateMs > LATE_SUBMIT_LOG_THRESHOLD_MS) {
+            log.info("지연 제출 — userId={} 제한시간보다 {}초 늦게 도착 (브라우저 타이머 정지 추정, 세션 TTL {}초)",
+                    userId, lateMs / 1000, SESSION_TTL_SECONDS);
+        }
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(UserErrorCode.NOT_FOUND));
 
-        // 7. isPersonalBest는 INSERT "전에" 판정 — 저장 후 조회하면 방금 넣은 기록과 비교하게 된다
+        // 8. isPersonalBest는 INSERT "전에" 판정 — 저장 후 조회하면 방금 넣은 기록과 비교하게 된다
         int previousBest = soloRecordRepository.findTopByUserIdOrderByScoreDesc(userId)
                 .map(SoloRecord::getScore)
                 .orElse(-1); // 첫 게임이면 무조건 갱신
