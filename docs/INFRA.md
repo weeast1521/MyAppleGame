@@ -94,15 +94,17 @@ D-번호는 이후 문서·PR에서 참조하는 식별자.
 
 | 컨테이너 | RAM 상한 | 비고 |
 |---|---|---|
-| app (JVM) | -Xmx2g · limit 3g | 다중 인스턴스 시 ×2 |
-| mysql | buffer_pool 2G · limit 3g | 09-02 반영 |
-| redis | maxmemory 1gb · limit 1.5g | noeviction · 09-02 반영 |
-| nginx / prometheus / grafana / node-exporter | 128m / 1g / 512m / 64m | prometheus retention 15d |
-| **합계** | **≈ 9 GB** | 여유 6GB + swap 4GB. `mem_limit` 명시는 미반영(잔여) |
+| app (JVM) | -Xmx2g · limit 3g | 힙 2g + 힙 밖 1g(메타스페이스·스레드 스택·다이렉트 버퍼). 다중 인스턴스 시 ×2 |
+| mysql | buffer_pool 2G · limit 3g | pool 밖(정렬·조인 버퍼, 임시 테이블)이 커넥션 수에 비례. buffer_pool 09-02 · limit 09-17 |
+| redis | maxmemory 1gb · limit 1.5g | 여유 0.5g는 AOF rewrite의 fork COW 몫. noeviction · maxmemory 09-02 · limit 09-17 |
+| nginx / prometheus / grafana / node-exporter | 128m / 1g / 512m / 64m | prometheus는 head block(최근 2h)만 메모리, retention 15d는 디스크 |
+| **합계** | **≈ 9.19 GiB** | 여유 ~5.8GB + swap 4GB. `mem_limit` 전 서비스 반영(09-17, #33) |
+
+`mem_limit`은 swarm 전용 `deploy.resources.limits`가 아니라 서비스 최상위 키로 쓴다(일반 compose에서는 후자가 조용히 무시된다). 목적은 격리 — 상한이 없으면 한 컨테이너의 폭주가 VM 메모리를 잠식해 커널 OOM Killer가 무관한 컨테이너(1순위: buffer pool 2G를 쥔 MySQL)를 죽인다.
 
 CPU 2코어라 부하 테스트·다중 인스턴스 실험 시 앱끼리 경합 → 절대 처리량이 아니라 **정합성과 before/after 상대 비교**가 목적임을 결과에 명시한다.
 
-디스크(99 GB 중 ~28 GB 예산): OS 4.2 + swap 4 + 이미지 ~3(`docker image prune` 잔여 작업) + MySQL 10(`skip-log-bin` 09-02 반영) + Redis AOF 1 + Prometheus 2~3 + 백업 1. 디스크는 병목 아님.
+디스크(99 GB 중 ~28 GB 예산): OS 4.2 + swap 4 + 이미지 ~3(`docker image prune -f` 배포 성공 경로에 반영, 09-17 #33) + MySQL 10(`skip-log-bin` 09-02 반영) + Redis AOF 1 + Prometheus 2~3 + 백업 1. 디스크는 병목 아님.
 
 ## 4. 단계별 로드맵
 
