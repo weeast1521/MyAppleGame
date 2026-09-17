@@ -26,8 +26,28 @@ else
     echo "APP_TAG=${TAG}" >> .env
 fi
 
+# --no-deps로 앱만 띄우므로 depends_on이 해주던 "mysql이 healthy할 때까지 대기"가 사라진다.
+# 그 보장을 여기서 직접 확인한다 — 데이터 계층이 준비되지 않았으면 새 색을 띄우지 않고
+# 즉시 실패시킨다. 이게 없으면 앱이 그냥 떠서 actuator/health가 DOWN을 반환하고,
+# 헬스 루프가 120초를 기다린 뒤에야 실패해 원인이 로그 속에 묻힌다.
+echo "▶ 데이터 계층 상태 확인 (배포는 이 서비스들을 건드리지 않는다)"
+MYSQL_HEALTH=$(docker inspect -f '{{.State.Health.Status}}' apple-mysql 2>/dev/null || echo missing)
+REDIS_STATE=$(docker inspect -f '{{.State.Status}}' apple-redis 2>/dev/null || echo missing)
+if [ "$MYSQL_HEALTH" != "healthy" ] || [ "$REDIS_STATE" != "running" ]; then
+    echo "✖ 데이터 계층이 준비되지 않았습니다 — mysql=${MYSQL_HEALTH} redis=${REDIS_STATE}"
+    echo "  배포는 --no-deps로 앱만 다루므로 이 서비스들을 자동으로 띄우지 않습니다."
+    echo "  확인 후 직접 기동하세요:  docker compose -f docker-compose.prod.yml up -d mysql redis"
+    exit 1
+fi
+
 $COMPOSE --profile "$NEW" pull "app-${NEW}"
-$COMPOSE --profile "$NEW" up -d "app-${NEW}"
+
+# --no-deps: 앱만 띄운다. 이 플래그가 없으면 compose가 depends_on에 적힌 mysql·redis까지
+# 함께 챙기는데, compose 파일에서 그 서비스의 설정이 바뀐 상태라면 재생성해버린다.
+# 09-18 00:10 배포가 그 사례다 — mem_limit을 추가한 커밋이 머지되자 배포가 mysql·redis를
+# 교체했고, 당시 서빙 중이던 구 색이 30초간 DB·Redis를 잃었다(#46 ③).
+# 무중단 보장의 범위를 '앱 컨테이너 교체'로 한정하고, 인프라 변경은 별도 절차로 분리한다.
+$COMPOSE --profile "$NEW" up -d --no-deps "app-${NEW}"
 
 # 헬스 대기 (최대 120초) — JRE 이미지에 curl이 없으므로 nginx(알파인)의 wget으로
 # 내부망에서 확인한다
