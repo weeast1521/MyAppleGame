@@ -3,6 +3,7 @@
 > 2026-09-04 · 로컬 Windows 11 · Docker MySQL 8.4 / Redis 7 · `solo_record` 2,017,382건 / 유저 10,004명 (Step 14 더미)
 > k6는 Docker(`grafana/k6`)로 실행, 앱은 `java -jar` 로컬 프로필. 숫자는 이 노트북 기준 **before/after 상대 비교**용.
 > 재현: `load/*.js` 상단 주석 참고. 서버 관찰은 p6spy 로그(쿼리별 ms)와 `/actuator/prometheus`의 `hikaricp_connections_*`.
+> (09-18 추가, #32) 지금은 `docker compose --profile monitoring up -d` → http://localhost:3000 의 "AppleGame — 부하 실습" 대시보드로 같은 지표를 시계열로 본다. `source=db` 줄 수는 `ranking_aggregation_total` 카운터로도 나온다.
 >
 > ⚠ **JVM 워밍업 주의** — 같은 시나리오를 방금 기동한 JVM에서 돌리면 JIT 전이라 2~3배 느리다
 > (아래 miss 시나리오: 콜드 warm-up 3.7초 / 웜 585ms). 표의 숫자는 전부 한 번 이상 돌려 데운 뒤 측정한 값이다.
