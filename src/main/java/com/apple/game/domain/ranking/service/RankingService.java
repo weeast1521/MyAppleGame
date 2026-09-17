@@ -7,6 +7,8 @@ import com.apple.game.domain.solo.entity.SoloRecord;
 import com.apple.game.domain.solo.repository.SoloRecordRepository;
 import com.apple.game.domain.user.entity.User;
 import com.apple.game.domain.user.repository.UserRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -33,10 +35,27 @@ public class RankingService {
     private final SoloRecordRepository soloRecordRepository;
     private final RankingRedisRepository rankingRedisRepository;
     private final UserRepository userRepository;
+    // Step 15에서 스탬피드를 판정한 근거는 `grep -c source=db`(집계 실행 횟수)였다. 로그는 부하가 끝난 뒤 세야 하고
+    // 다른 지표(hikari pending, p95)와 시간축을 맞춰 볼 수 없다 — 같은 숫자를 Prometheus 카운터로도 낸다 (#32).
+    private final MeterRegistry meterRegistry;
 
     // 대기자가 warm-up 플래그를 기다리는 상한과 폴링 간격. 단독 warm-up은 수십 ms~2초 안에 끝난다(Step 14 E2).
     private static final long WARM_UP_WAIT_MS = 5_000;
     private static final long WARM_UP_POLL_MS = 50;
+
+    // 카운터를 0으로 미리 등록한다. 첫 increment 때 생기게 두면 Prometheus가 본 첫 샘플이 이미 10이고,
+    // increase()/rate()는 '없던 시계열이 10으로 나타난 것'을 증가로 치지 않는다 — 스탬피드의 10회가 그래프에서 0으로 사라진다.
+    @PostConstruct
+    void registerMeters() {
+        for (RankingPeriod p : RankingPeriod.values()) {
+            for (boolean warmUp : new boolean[]{true, false}) {
+                meterRegistry.counter("ranking.aggregation",
+                        "period", p.name().toLowerCase(), "warmup", String.valueOf(warmUp));
+            }
+        }
+        meterRegistry.counter("ranking.warmup.wait", "result", "hit");
+        meterRegistry.counter("ranking.warmup.wait", "result", "timeout");
+    }
 
     // Step 15: 서비스 레벨 @Transactional을 뗐다. 이 메서드는 대부분 Redis에서 끝나는데, 트랜잭션이 걸려 있으면
     // 진입 즉시 DB 커넥션을 잡고(Hibernate가 begin 시점에 autocommit을 끄려고 커넥션을 얻는다) Redis 조회·락 대기
@@ -109,6 +128,7 @@ public class RankingService {
         long deadline = System.currentTimeMillis() + WARM_UP_WAIT_MS;
         while (System.currentTimeMillis() < deadline) {
             if (rankingRedisRepository.isWarmed(key)) {
+                meterRegistry.counter("ranking.warmup.wait", "result", "hit").increment();
                 return loadFromRedis(key, userId, offset, size);
             }
             try {
@@ -121,12 +141,18 @@ public class RankingService {
         // 보유자가 죽었거나(락은 TTL로 풀린다) 집계가 비정상적으로 느리다 —
         // 이 요청은 적재 없이 DB에서 직접 답하고, 다음 요청이 락을 다시 시도한다.
         log.warn("랭킹 warm-up 대기 초과 key={} — 적재 없이 DB 직접 응답", key);
+        meterRegistry.counter("ranking.warmup.wait", "result", "timeout").increment();
         return loadFromDb(key, period, today, userId, offset, size, false);
     }
 
     private RankingResDTO.RankingPage loadFromDb(
             String key, RankingPeriod period, LocalDate today, Long userId, int offset, int size, boolean warmUp) {
         LocalDateTime from = period.aggregateFrom(today);
+        // 집계 1회 = source=db 로그 한 줄. 카운터를 single-flight 분기가 아니라 여기에 두는 이유:
+        // 실습처럼 single-flight를 빼고 loadFromDb를 직접 부르게 되돌려도(스탬피드 재현) 똑같이 세어져야 비교가 된다.
+        // warmup 태그 — true: 락 보유자의 정상 적재, false: 대기 초과로 적재 없이 직접 응답한 경우.
+        meterRegistry.counter("ranking.aggregation",
+                "period", period.name().toLowerCase(), "warmup", String.valueOf(warmUp)).increment();
 
         // 전체를 조회하는 이유: 결과 전원을 ZSet에 적재(warm-up)해야 이후 조회가 Redis에서 끝난다
         List<SoloRecordRepository.RankingRow> rows = (from == null)
