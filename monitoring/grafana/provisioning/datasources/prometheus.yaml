@@ -1,0 +1,23 @@
+# Grafana 데이터소스 선언 (#32) — UI 클릭 대신 파일이 원본.
+# Grafana는 기동할 때마다 이 디렉터리를 읽어 자신을 맞춘다. grafana-data 볼륨을 지워도 다시 생긴다.
+# provisioned 데이터소스는 UI에서 수정할 수 없다 — 바꾸려면 이 파일을 고친다(그게 의도).
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    # uid 고정이 핵심. 대시보드 JSON(dashboards/*.json)이 데이터소스를 이름이 아니라 uid로 참조한다.
+    # 생략하면 Grafana가 랜덤 uid를 만들고, 볼륨 재생성마다 바뀌어 대시보드 패널이 전부 "datasource not found".
+    uid: prometheus
+    # proxy — 브라우저가 아니라 Grafana 서버가 대신 질의한다. 그래서 URL이 Docker 내부 DNS 이름이어도 되고,
+    # Prometheus 9090을 밖에 열 필요가 없다(INFRA.md §7 포트 정책).
+    access: proxy
+    # 로컬(docker-compose.yml --profile monitoring)과 prod 모두 서비스 이름이 prometheus라 같은 파일을 쓴다.
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      # Grafana의 $__rate_interval 계산 기준 = Prometheus scrape_interval과 같아야 한다.
+      # 짧게 잡으면 rate() 창에 샘플이 1개뿐이라 그래프가 끊기고, 길게 잡으면 짧은 부하 스파이크가 뭉개진다.
+      # prod는 15s, 로컬은 부하 테스트(수십 초)를 보려고 5s — compose가 환경변수로 넣는다.
+      timeInterval: $PROMETHEUS_SCRAPE_INTERVAL

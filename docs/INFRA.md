@@ -114,6 +114,9 @@ CPU 2코어라 부하 테스트·다중 인스턴스 실험 시 앱끼리 경합
   Dockerfile(multi-stage·layered jar) · docker-compose.prod.yml(7서비스, blue-green 2색) · nginx 설정 · actuator+prometheus · Flyway · deploy.yml(test→build→GHCR→ssh 전환) · VM 초기화 런북 B-0~B-11 · compose 잔여 설정(Redis 영속성·MySQL 튜닝·TZ, PR #22)
 - **Phase 2 — HTTPS**: DuckDNS 서브도메인 → certbot → 443 + http→https 리다이렉트 → firewalld https 추가 → `new SockJS('/ws')`의 wss 자동 적용 확인
 - **Phase 3 — 모니터링 고도화**: Grafana 대시보드(JVM 힙·GC, HikariCP, HTTP p95, WS 세션 수), mysqld/redis-exporter 여부, 슬로우 쿼리 → `index_experiment.md` 연결
+  - **09-18 1차 (#32)**: 데이터소스·대시보드 provisioning(`monitoring/grafana/`, 데이터소스 uid `prometheus` 고정) · HTTP 히스토그램 버킷 · 커스텀 지표(`websocket_sessions`·`websocket_inbound_*`·`ranking_aggregation_total`·`ranking_warmup_wait_total`) · 대시보드 "AppleGame — 부하 실습" 22패널 · 로컬 `--profile monitoring`
+  - VM 반영은 배포로 되지 않는다(§9-1) — 머지 후 `docker compose -f docker-compose.prod.yml up -d grafana`
+  - 남은 것: mysqld/redis-exporter · Alertmanager · 슬로우 쿼리 연결
 - **Phase 4 — 다중 인스턴스 실험**: app 2개 + Nginx upstream(SockJS 유지 시 `ip_hash` 필수), Redis pub/sub 직접 구현(O3), 인스턴스 간 브로드캐스트 정합성·Lua 동시성 검증
 - **Phase 5 — 부하 테스트**: k6 시나리오(랭킹 폭주·동시 clear·동시 가입). 로컬→VM은 절대치용, VM 내부는 상대 비교용 — 결과 표기 시 어느 쪽인지 반드시 명시
 

@@ -1,0 +1,18 @@
+# 로컬 실습용 (docker-compose.yml --profile monitoring). prod는 monitoring/prometheus.yml.
+# 차이 두 가지:
+#   1) 수집 대상 — 로컬 앱은 컨테이너가 아니라 호스트에서 `./gradlew bootRun`으로 돈다.
+#      컨테이너 안에서 localhost는 Prometheus 자신이므로 호스트를 가리키는 host.docker.internal을 쓴다.
+#   2) 수집 간격 5s — 부하 테스트 한 번이 30~60초라 15s면 점 2~4개로 스파이크가 뭉개진다.
+#      grafana의 PROMETHEUS_SCRAPE_INTERVAL과 짝(provisioning datasources/prometheus.yaml).
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: app
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

@@ -32,6 +32,21 @@ management:
     web:
       exposure:
         include: health,prometheus
+  metrics:
+    distribution:
+      # HTTP 응답시간을 히스토그램 버킷(le)으로도 내보낸다 — Grafana의 p95는
+      # histogram_quantile(0.95, rate(http_server_requests_seconds_bucket[...]))로만 계산할 수 있다.
+      # 기본값(false)이면 count·sum·max만 나와서 '평균'과 '최대'만 보이고 p95는 못 그린다.
+      # percentiles(0.95)를 앱이 직접 계산하게 하는 방법도 있지만, 인스턴스별로 계산된 백분위수는
+      # 더할 수 없다(blue+green 합산 p95 불가). 버킷은 더할 수 있다.
+      percentiles-histogram:
+        http.server.requests: true
+      # 버킷 범위를 좁혀 시계열 수를 줄인다(uri·method·status 조합마다 버킷 수만큼 늘어난다).
+      # 5ms 미만과 10s 초과는 구분할 필요가 없다 — Step 15의 최악 p95가 11.7s(풀 50 실험)였다.
+      minimum-expected-value:
+        http.server.requests: 5ms
+      maximum-expected-value:
+        http.server.requests: 15s
 
 # Step 15 — p6spy 쿼리 로깅. 한 줄에 [실행시간 ms] + 바인딩된 SQL.
 # 기본은 켜짐(로컬/테스트), application-prod.yaml에서 decorator.datasource.enabled=false로 프록시 자체를 뺀다.

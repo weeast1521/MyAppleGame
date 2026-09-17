@@ -1,0 +1,15 @@
+# 대시보드 프로바이더 — 아래 path의 *.json을 대시보드로 읽는다.
+# 대시보드 본문은 monitoring/grafana/dashboards/에 두고 compose가 /etc/grafana/dashboards로 마운트한다.
+apiVersion: 1
+
+providers:
+  - name: applegame
+    folder: AppleGame
+    type: file
+    # UI에서 고쳐도 저장은 되지만 재기동 시 파일 내용으로 되돌아간다.
+    # 패널을 UI로 다듬었으면 Share → Export → JSON을 파일에 덮어써 커밋한다.
+    allowUiUpdates: true
+    # 파일을 고치면 재기동 없이 30초 안에 반영 — 대시보드 작업 루프를 짧게.
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards
