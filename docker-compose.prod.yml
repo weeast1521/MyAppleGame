@@ -19,6 +19,13 @@ x-app: &app
     JWT_SECRET: ${JWT_SECRET}
     # 15GB 중 앱 힙 2GB — 설계서 §3 메모리 예산
     JAVA_TOOL_OPTIONS: "-Xmx2g"
+  # 컨테이너 메모리 상한 3g = 힙 2g + 힙 밖 1g (§3).
+  # -Xmx2g가 제한하는 것은 힙뿐이고 메타스페이스·스레드 스택·다이렉트 버퍼·JIT 코드 캐시는
+  # 힙 밖이라 JVM 옵션으로 막히지 않는다. 상한을 힙과 같은 2g로 잡으면 힙이 차기도 전에
+  # 컨테이너가 OOM kill 당한다. 200 VU 부하에서는 톰캣 스레드 스택과 WebSocket 버퍼가 늘어
+  # 힙 밖이 실제로 커지는 쪽이다(부하 테스트 S1/S4 참고).
+  # swarm 전용인 deploy.resources.limits는 일반 compose에서 조용히 무시되므로 mem_limit을 쓴다.
+  mem_limit: 3g
   depends_on:
     mysql:
       condition: service_healthy
