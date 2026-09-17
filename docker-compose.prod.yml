@@ -19,6 +19,13 @@ x-app: &app
     JWT_SECRET: ${JWT_SECRET}
     # 15GB 중 앱 힙 2GB — 설계서 §3 메모리 예산
     JAVA_TOOL_OPTIONS: "-Xmx2g"
+  # 컨테이너 메모리 상한 3g = 힙 2g + 힙 밖 1g (§3).
+  # -Xmx2g가 제한하는 것은 힙뿐이고 메타스페이스·스레드 스택·다이렉트 버퍼·JIT 코드 캐시는
+  # 힙 밖이라 JVM 옵션으로 막히지 않는다. 상한을 힙과 같은 2g로 잡으면 힙이 차기도 전에
+  # 컨테이너가 OOM kill 당한다. 200 VU 부하에서는 톰캣 스레드 스택과 WebSocket 버퍼가 늘어
+  # 힙 밖이 실제로 커지는 쪽이다(부하 테스트 S1/S4 참고).
+  # swarm 전용인 deploy.resources.limits는 일반 compose에서 조용히 무시되므로 mem_limit을 쓴다.
+  mem_limit: 3g
   depends_on:
     mysql:
       condition: service_healthy
@@ -40,6 +47,8 @@ services:
       - ./nginx:/etc/nginx/conf.d:ro
     depends_on:
       - grafana
+    # 128m — nginx는 요청을 흘려보내기만 하고 상태를 들지 않는다. 워커 프로세스 + 연결 버퍼 몫.
+    mem_limit: 128m
     restart: unless-stopped
 
   # blue/green 두 색 중 한쪽만 기동한다 (--profile blue|green).
@@ -69,6 +78,9 @@ services:
     command:
       - --skip-log-bin
       - --innodb-buffer-pool-size=2G
+    # 상한 3g = buffer pool 2G + 그 밖(커넥션별 정렬·조인 버퍼, 임시 테이블, 스레드) 1g.
+    # buffer pool만 계산하면 부하 시 커넥션이 늘 때 상한을 넘는다 — 앱의 힙/힙 밖 관계와 같은 구조다.
+    mem_limit: 3g
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -96,6 +108,11 @@ services:
       - 1gb
       - --maxmemory-policy
       - noeviction
+    # 상한 1.5g = maxmemory 1gb + 오버헤드 0.5g.
+    # 오버헤드는 AOF 재작성(fork 시 COW로 일시적으로 메모리가 늘어난다)과 클라이언트 버퍼 몫이다.
+    # maxmemory와 같은 1g로 잡으면 AOF rewrite 중에 컨테이너가 죽는다 —
+    # noeviction이라 데이터를 지우지 않고 버티는 설계와 짝이 되는 여유분.
+    mem_limit: 1.5g
     volumes:
       - redis-data:/data
     restart: unless-stopped
@@ -106,6 +123,9 @@ services:
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
+    # 1g — 최근 2시간치 시계열을 메모리(head block)에 들고 있다가 디스크로 내린다.
+    # retention 15d라 대부분은 디스크(prometheus-data)에 있고 메모리는 head block + 쿼리 작업공간 몫.
+    mem_limit: 1g
     restart: unless-stopped
 
   grafana:
@@ -119,6 +139,9 @@ services:
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
     volumes:
       - grafana-data:/var/lib/grafana
+    # 512m — 대시보드 렌더링은 브라우저가 하고 Grafana는 쿼리를 중계한다(access: proxy).
+    # Phase 3에서 대시보드가 늘어도 메모리는 크게 안 변하는 쪽.
+    mem_limit: 512m
     restart: unless-stopped
 
   node-exporter:
@@ -133,6 +156,8 @@ services:
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
       - --path.rootfs=/rootfs
+    # 64m — 스크랩 요청마다 /proc·/sys를 읽어 즉석에서 응답한다. 상태를 저장하지 않는다.
+    mem_limit: 64m
     restart: unless-stopped
 
 volumes:
