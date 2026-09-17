@@ -118,7 +118,6 @@ const Ranking = {
             // 100등까지 한 번에 받는다 — 순위는 요청 사이에 재배열될 수 있어
             // offset 페이징으로 나눠 받으면 중복/누락이 생기므로 스냅샷 방식이 정확하다
             const r = await apiFetch(`/api/rankings/solo?period=${this.period}&offset=0&size=100`);
-            $('rankingSource').textContent = r.source ?? '-';
             if (r.myRank) {
                 $('myRank').classList.remove('hidden');
                 $('myRank').textContent = `내 순위: ${r.myRank.rank}위 (${r.myRank.score}점)`;
@@ -258,8 +257,7 @@ const Profile = {
             $('headerNickname').textContent = me.nickname;
             $('profileInfo').innerHTML = `
                 <dt>이메일</dt><dd>${escapeHtml(me.email ?? '-')}</dd>
-                <dt>닉네임</dt><dd>${escapeHtml(me.nickname)}</dd>
-                <dt>가입 방식</dt><dd>${escapeHtml(me.provider ?? '-')}</dd>`;
+                <dt>닉네임</dt><dd>${escapeHtml(me.nickname)}</dd>`;
         } catch (e) {
             $('profileInfo').innerHTML = '';
             $('profileMsg').textContent = e.message;
