@@ -29,6 +29,41 @@ services:
     volumes:
       - redis-data:/data
 
+  # ── 모니터링 (선택) ──────────────────────────────────────────
+  # 기본 `docker compose up -d`에는 뜨지 않는다. 부하 실습 때만:
+  #   docker compose --profile monitoring up -d
+  #   Grafana http://localhost:3000 (로그인 없음) → AppleGame 폴더 → 부하 실습 대시보드
+  # 데이터소스·대시보드는 prod와 같은 provisioning 파일을 읽는다 — 로컬에서 만든 패널이 그대로 VM에 올라간다.
+  prometheus:
+    image: prom/prometheus:v2.53.4
+    container_name: apple-prometheus
+    profiles: [monitoring]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.local.yml:/etc/prometheus/prometheus.yml:ro
+    # Linux 도커 엔진에는 host.docker.internal이 기본으로 없다(Docker Desktop만 제공) — 명시해 두면 양쪽에서 동작
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: apple-grafana
+    profiles: [monitoring]
+    ports:
+      - "3000:3000"
+    environment:
+      PROMETHEUS_SCRAPE_INTERVAL: 5s
+      # 로컬 전용 — 로그인 없이 Admin으로 들어간다. prod는 GF_SECURITY_ADMIN_PASSWORD로 로그인.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
 volumes:
   mysql-data:
   redis-data:
