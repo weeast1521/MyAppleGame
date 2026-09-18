@@ -41,15 +41,38 @@ services:
       TZ: Asia/Seoul
     ports:
       - "80:80"
+      # Phase 2 — HTTPS. ACG는 443이 이미 열려 있고(§7), VM firewalld에 https 추가가 필요하다.
+      - "443:443"
     volumes:
       # 디렉터리째 마운트 — deploy.sh의 sed -i(active_upstream.inc 교체)가 반영되게.
       # active_upstream.inc는 git이 추적하지 않는 VM 로컬 상태 파일 — 없으면 .example에서 복사(deploy.sh가 처리)
       - ./nginx:/etc/nginx/conf.d:ro
+      # TLS 인증서(certbot이 씀·nginx가 읽음)와 ACME 챌린지 webroot. named volume이라
+      # nginx 재생성·app 배포와 무관하게 살아남는다. nginx는 읽기만 하므로 :ro.
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot-webroot:/var/www/certbot:ro
     depends_on:
       - grafana
     # 128m — nginx는 요청을 흘려보내기만 하고 상태를 들지 않는다. 워커 프로세스 + 연결 버퍼 몫.
     mem_limit: 128m
     restart: unless-stopped
+
+  # Let's Encrypt 인증서 발급·갱신 (Phase 2). 상주 서비스가 아니라 필요할 때만 실행한다:
+  #   발급:  docker compose -f docker-compose.prod.yml run --rm certbot \
+  #            certonly --webroot -w /var/www/certbot -d myapplegame.duckdns.org \
+  #            --email <메일> --agree-tos --no-eff-email
+  #   갱신:  docker compose -f docker-compose.prod.yml run --rm certbot renew --quiet
+  #          → 이후 nginx -s reload (cron으로 하루 2회, INFRA.md §Phase 2 참고)
+  # profiles로 묶어 평소 `up -d`에는 뜨지 않는다. nginx와 같은 named volume을 공유하며,
+  # certbot은 인증서·webroot에 써야 하므로 nginx와 달리 :ro 없이 마운트한다.
+  certbot:
+    image: certbot/certbot:latest
+    container_name: apple-certbot
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    profiles: ["certbot"]
+    restart: "no"
 
   # blue/green 두 색 중 한쪽만 기동한다 (--profile blue|green).
   # 프로필이 없으면 `up -d` 한 번에 둘 다 떠서 메모리를 2배로 먹는다.
@@ -170,3 +193,6 @@ volumes:
   redis-data:
   prometheus-data:
   grafana-data:
+  # TLS 인증서(/etc/letsencrypt)와 ACME 챌린지 파일(/var/www/certbot). Phase 2.
+  letsencrypt:
+  certbot-webroot:
