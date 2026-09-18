@@ -12,7 +12,7 @@
 | OS | Rocky 8.8 · 2 vCPU · 15 GB RAM · swap 4 GB · 디스크 99 GB |
 | IP | 외부 223.130.152.28 · 내부 192.168.0.75 |
 | 앱 | Spring Boot 3.4 · MySQL 8.4 · Redis 7 · STOMP(SockJS) |
-| 상태 | **Phase 1 완료 (09-02)** — http://223.130.152.28/ 서빙 중, main 머지 = 자동 배포 |
+| 상태 | **Phase 1 완료 (09-02)** — 서빙 중, main 머지 = 자동 배포. **Phase 2(HTTPS) 코드 반영 09-18, VM 적용 대기** — 도메인 myapplegame.duckdns.org |
 
 ---
 
@@ -50,7 +50,7 @@ D-번호는 이후 문서·PR에서 참조하는 식별자.
 |---|---|---|---|
 | D1 | 클라우드 자원 | **NCP VM 1대가 전부** | 매니지드 DB/Redis 없음 → 전부 컨테이너로 VM 안에서 운영 |
 | D2 | VM 스펙 | 2 vCPU / 15 GB / swap 4 GB | RAM 여유, CPU 병목. 메모리 예산은 §3 |
-| D3 | 도메인/TLS | 1차: 공인 IP + http. 도메인은 Phase 2 (DuckDNS) | wss는 Phase 2. Nginx 설정만 바꾸면 되도록 구조화 |
+| D3 | 도메인/TLS | 1차: 공인 IP + http. **Phase 2: DuckDNS(myapplegame.duckdns.org) + Let's Encrypt, nginx가 TLS 종료** | wss는 SockJS 상대경로라 자동. 자바·프론트 코드 무변경 — nginx/compose만 |
 | D4 | 3000 포트 | ACG에서는 못 닫는다 → Grafana를 publish하지 않아 listen 없음 + firewalld 차단으로 **실질 폐쇄** | Grafana는 `/grafana` 경로로만 |
 | D5 | 배포 방식 | GitHub Actions → GHCR 이미지 → SSH → blue-green 전환 | 로컬 compose와 구조 일치 |
 | D6 | 인프라 목적 | 데모 배포 + 모니터링 학습 + 부하 테스트 + 다중 인스턴스 실험 | "단순하되 확장 지점을 열어두는" 구조 |
@@ -112,7 +112,30 @@ CPU 2코어라 부하 테스트·다중 인스턴스 실험 시 앱끼리 경합
 
 - **Phase 1 — 데모 배포 (IP + http): ✅ 완료 (09-02 01:35, 이슈 #15 닫음)**
   Dockerfile(multi-stage·layered jar) · docker-compose.prod.yml(7서비스, blue-green 2색) · nginx 설정 · actuator+prometheus · Flyway · deploy.yml(test→build→GHCR→ssh 전환) · VM 초기화 런북 B-0~B-11 · compose 잔여 설정(Redis 영속성·MySQL 튜닝·TZ, PR #22)
-- **Phase 2 — HTTPS**: DuckDNS 서브도메인 → certbot → 443 + http→https 리다이렉트 → firewalld https 추가 → `new SockJS('/ws')`의 wss 자동 적용 확인
+- **Phase 2 — HTTPS: 코드 반영 완료(09-18), VM 적용 대기.** DuckDNS(myapplegame.duckdns.org) → certbot(webroot) → 443 + http→https 리다이렉트 + HSTS → firewalld https 추가 → SockJS wss 자동 적용. **nginx/compose만 바뀌고 자바·프론트 코드는 무변경**(SockJS 상대경로, X-Forwarded-Proto·forward-headers-strategy 기존 반영).
+  배관(ACME location·certbot 서비스·443 볼륨/포트)과 443 서버 블록은 인증서 유무 때문에 **커밋 2개로 분리**했다. deploy.sh는 nginx를 안 건드리므로(§9-1) 아래 절차는 VM에서 수동:
+  ```bash
+  # 0) DuckDNS: myapplegame.duckdns.org의 current ip = 223.130.152.28 (dig로 확인)
+  cd /opt/applegame && git pull --ff-only origin main
+  # 1) 443 열기 — ACG는 이미 열림(§7), VM firewalld에만 추가
+  firewall-cmd --add-service=https --permanent && firewall-cmd --reload
+  # 2) 볼륨·443 반영(nginx 재생성 — 잠깐 끊긴다. 한가한 시간에)
+  docker compose -f docker-compose.prod.yml up -d nginx
+  # 3) 인증서 발급(webroot). 이 시점엔 아직 http만 뜨지만 챌린지 경로는 응답한다
+  docker compose -f docker-compose.prod.yml run --rm certbot certonly \
+    --webroot -w /var/www/certbot -d myapplegame.duckdns.org \
+    --email <메일> --agree-tos --no-eff-email
+  # 4) 인증서가 생긴 뒤 443 서버 블록이 유효해진다 — 설정만 바뀌었으니 reload(무중단)
+  docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+  # 5) 확인: https 자물쇠 + http 접속 시 301
+  curl -sSI https://myapplegame.duckdns.org/ | head -1
+  curl -sSI http://myapplegame.duckdns.org/  | grep -i location
+  ```
+  **자동 갱신**(90일 만료) — VM cron 하루 2회:
+  ```bash
+  docker compose -f /opt/applegame/docker-compose.prod.yml run --rm certbot renew --quiet \
+    && docker compose -f /opt/applegame/docker-compose.prod.yml exec -T nginx nginx -s reload
+  ```
 - **Phase 3 — 모니터링 고도화**: Grafana 대시보드(JVM 힙·GC, HikariCP, HTTP p95, WS 세션 수), mysqld/redis-exporter 여부, 슬로우 쿼리 → `index_experiment.md` 연결
   - **09-18 1차 (#32)**: 데이터소스·대시보드 provisioning(`monitoring/grafana/`, 데이터소스 uid `prometheus` 고정) · HTTP 히스토그램 버킷 · 커스텀 지표(`websocket_sessions`·`websocket_inbound_*`·`ranking_aggregation_total`·`ranking_warmup_wait_total`) · 대시보드 "AppleGame — 부하 실습" 22패널 · 로컬 `--profile monitoring`
   - VM 반영은 배포로 되지 않는다(§9-1) — 머지 후 `docker compose -f docker-compose.prod.yml up -d grafana`
@@ -150,8 +173,8 @@ CPU 2코어라 부하 테스트·다중 인스턴스 실험 시 앱끼리 경합
 | 포트 | 공개 | 용도 |
 |---|---|---|
 | 22 | 전체 (제공처 고정) | SSH — 키 인증만, root 금지, fail2ban. IP 제한 불가(D11) |
-| 80 | 전체 | Nginx (Phase 2부터 443 리다이렉트) |
-| 443 | ACG 열림 · firewalld 차단 | Phase 2에서 firewalld에 https 추가 |
+| 80 | 전체 | Nginx — Phase 2부터 ACME 챌린지 외 전부 443 리다이렉트 |
+| 443 | ACG 열림 · **firewalld는 VM 적용 시 https 추가** | Phase 2 TLS 종료(nginx). 코드 반영 09-18 |
 | 3000 | ACG 열림 · firewalld 차단 · listen 없음 | Grafana는 `/grafana` 경로로만 — 실질 폐쇄(D4) |
 | 3306 · 6379 · 8080 · 9090 | 비공개 | Docker 내부 네트워크 전용, `ports:` 미사용 |
 

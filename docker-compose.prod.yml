@@ -157,8 +157,10 @@ services:
     environment:
       TZ: Asia/Seoul
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
-      # 3000 포트를 열지 않고 nginx의 /grafana/ 경로로만 접근하기 위한 설정 짝
-      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      # 3000 포트를 열지 않고 nginx의 /grafana/ 경로로만 접근하기 위한 설정 짝.
+      # Phase 2: %(protocol)s는 Grafana가 내부에서 서빙하는 http를 그대로 써서 로그인
+      # 리다이렉트가 http로 튄다 → https 도메인으로 명시 고정.
+      GF_SERVER_ROOT_URL: "https://myapplegame.duckdns.org/grafana/"
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       # provisioning 데이터소스의 timeInterval — monitoring/prometheus.yml의 scrape_interval과 짝
       PROMETHEUS_SCRAPE_INTERVAL: 15s
