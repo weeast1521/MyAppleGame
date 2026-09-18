@@ -34,7 +34,21 @@ import java.util.concurrent.ThreadLocalRandom;
 public class SoloGameService {
 
     private static final int TIME_LIMIT_SECONDS = 120;
-    private static final int SESSION_TTL_SECONDS = TIME_LIMIT_SECONDS + 30;
+
+    // 제출 창 — "언제까지 제출을 받아줄까"만 결정한다. 제한시간 준수는 validateMoveTimes가
+    // 맡으므로 TTL을 넉넉히 줘도 정합성이 약해지지 않는다.
+    // 150초(= 제한시간 + 30초)였을 때는 브라우저가 타이머를 멈춘 시간을 견디지 못했다 —
+    // 뒤로가기로 페이지가 bfcache에 얼거나, 비활성 탭에서 setInterval이 조여지거나,
+    // 화면이 잠기면 클라이언트 제출이 그만큼 밀리는데 TTL은 실시간으로 흐른다(#49).
+    private static final int SESSION_TTL_SECONDS = 600;
+
+    // 이 시간을 넘겨 도착한 제출은 '브라우저가 멈췄다 돌아온' 신호다. 거부하지 않고 기록만 남긴다 —
+    // #49가 재발하는지, 확대한 제출 창이 충분한지 판단할 근거가 된다.
+    private static final long LATE_SUBMIT_LOG_THRESHOLD_MS = 30_000L;
+
+    // move 시각 허용 오차. 클라이언트 타이머가 250ms 간격이라(solo.js) 제한시간 직후에
+    // 완료된 드래그가 한 틱 늦게 기록될 수 있다. 정직한 플레이를 오탐하지 않을 만큼만 준다.
+    private static final long MOVE_TIME_GRACE_MS = 1_000L;
 
     private static final int DEFAULT_SIZE = 20;
     private static final int MAX_SIZE = 100;
@@ -75,7 +89,11 @@ public class SoloGameService {
             throw new CustomException(SoloErrorCode.ALREADY_SUBMITTED);
         }
 
-        // 4~5. 시드로 최초 보드 재구성 → moves를 순서대로 재생하며 서버가 재검증
+        // 4. moves의 시각 검증 — 좌표 재생보다 먼저. 제한시간을 넘겨 찍힌 move가 있으면
+        //    보드 로직을 돌려볼 필요 없이 거부한다.
+        validateMoveTimes(request.moves());
+
+        // 5~6. 시드로 최초 보드 재구성 → moves를 순서대로 재생하며 서버가 재검증
         GameBoard board = GameBoard.fromSeed(session.getBoardSeed());
 
         int score = 0;
@@ -89,15 +107,22 @@ public class SoloGameService {
             clearedCount++;
         }
 
-        // 6. 플레이 시간 — 서버 시계 기준, 제한시간을 상한으로
-        int playTimeSeconds = (int) Math.min(
-                (System.currentTimeMillis() - session.getStartedAtMills()) / 1000,
-                TIME_LIMIT_SECONDS);
+        // 7. 플레이 시간 — 서버 시계 기준, 제한시간을 상한으로
+        long serverElapsedMs = System.currentTimeMillis() - session.getStartedAtMills();
+        int playTimeSeconds = (int) Math.min(serverElapsedMs / 1000, TIME_LIMIT_SECONDS);
+
+        // 제출이 제한시간보다 한참 늦게 도착했다면 클라이언트 타이머가 멈췄던 것이다.
+        // 이제 TTL이 넉넉해 기록은 정상 저장되지만, 얼마나 늦는지는 관측해둔다.
+        long lateMs = serverElapsedMs - TIME_LIMIT_SECONDS * 1000L;
+        if (lateMs > LATE_SUBMIT_LOG_THRESHOLD_MS) {
+            log.info("지연 제출 — userId={} 제한시간보다 {}초 늦게 도착 (브라우저 타이머 정지 추정, 세션 TTL {}초)",
+                    userId, lateMs / 1000, SESSION_TTL_SECONDS);
+        }
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new CustomException(UserErrorCode.NOT_FOUND));
 
-        // 7. isPersonalBest는 INSERT "전에" 판정 — 저장 후 조회하면 방금 넣은 기록과 비교하게 된다
+        // 8. isPersonalBest는 INSERT "전에" 판정 — 저장 후 조회하면 방금 넣은 기록과 비교하게 된다
         int previousBest = soloRecordRepository.findTopByUserIdOrderByScoreDesc(userId)
                 .map(SoloRecord::getScore)
                 .orElse(-1); // 첫 게임이면 무조건 갱신
@@ -154,6 +179,33 @@ public class SoloGameService {
         double averageScore = Math.round(agg.getAverageScore() * 10) / 10.0;
 
         return new SoloResDTO.Summary(agg.getBestScore(), agg.getTotalGames(), averageScore, allTimeRank);
+    }
+
+    /**
+     * moves의 시각 검증 — 두 가지를 본다.
+     *  1) 제한시간 준수: 모든 move의 elapsedMs가 [0, TIME_LIMIT + 오차] 안에 있어야 한다.
+     *     제한시간이 끝난 뒤 찍힌 move는 게임 규칙상 존재할 수 없다.
+     *  2) 단조 증가: moves는 보낸 순서대로 재생하므로 시각도 그 순서를 따라야 한다.
+     *     순서가 뒤집혔다면 클라이언트가 기록을 조립한 것이다.
+     *
+     * 한계를 분명히 해둔다 — elapsedMs는 클라이언트가 자기 시계로 적은 값이다.
+     * 이 검증은 '정직한 클라이언트가 제한시간을 넘겨 제출하는 것'을 막지만,
+     * 값을 작게 위조하는 클라이언트는 막지 못한다. 점수 자체는 좌표 재생으로 서버가
+     * 다시 계산하므로(board.clear) 위조로 얻을 수 있는 이득은 '생각할 시간'뿐이다.
+     */
+    private void validateMoveTimes(List<SoloReqDTO.Move> moves) {
+        long limitMs = TIME_LIMIT_SECONDS * 1000L + MOVE_TIME_GRACE_MS;
+        long previousMs = -1;
+
+        for (SoloReqDTO.Move move : moves) {
+            if (move.elapsedMs() < 0 || move.elapsedMs() > limitMs) {
+                throw new CustomException(SoloErrorCode.MOVES_OUT_OF_TIME);
+            }
+            if (move.elapsedMs() < previousMs) {
+                throw new CustomException(SoloErrorCode.MOVES_OUT_OF_TIME);
+            }
+            previousMs = move.elapsedMs();
+        }
     }
 
     private int normalizeSize(Integer size) {
