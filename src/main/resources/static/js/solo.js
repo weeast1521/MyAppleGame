@@ -25,6 +25,7 @@ const Solo = (() => {
         });
         $('btnSoloStart').addEventListener('click', start);
         $('btnSoloAgain').addEventListener('click', start);
+        $('btnSoloNewGame').addEventListener('click', restart);
 
         // 브라우저는 비활성 탭의 setInterval을 조이고(크롬은 1분 1회 수준), 화면이 잠기거나
         // 뒤로가기로 페이지가 bfcache에 얼리면 아예 멈춘다. 그동안 서버 세션 TTL은 실시간으로
@@ -41,8 +42,20 @@ const Solo = (() => {
         $('soloResult').classList.toggle('hidden', name !== 'result');
     }
 
+    // 진행 중인 판을 버리고 새로 시작한다 (#50).
+    // 잃을 것이 있을 때만 묻는다 — 점수 0이면 확인 없이 바로 새 판을 준다.
+    // 이전 판은 서버가 start 시점에 무효화하므로 프론트가 따로 취소 요청을 하지 않는다.
+    function restart() {
+        if (score > 0 && !confirm(`현재 판(${score}점)을 포기하고 새로 시작할까요?\n진행 중인 기록은 저장되지 않습니다.`)) {
+            return;
+        }
+        start();
+    }
+
     async function start() {
         $('soloMsg').textContent = '';
+        clearInterval(timerId);   // 이전 판의 타이머가 남아 새 판을 조기 종료시키지 않게
+        submitting = false;       // 제출 중 상태였다면 해제 — 새 판에서는 tick()이 동작해야 한다
         try {
             session = await apiFetch('/api/solo/games', { method: 'POST' });
             moves = [];
@@ -96,19 +109,25 @@ const Solo = (() => {
 
     async function finish(reasonText, attempt = 1) {
         if (!session || submitting) return;
+        // 제출 대상을 지금 고정한다 — 제출 중에 '새 게임'(#50)으로 session이 바뀔 수 있다
+        const submittedId = session.gameSessionId;
         submitting = true;
         board.setActive(false);
         clearInterval(timerId);
         $('soloStatus').textContent = `${reasonText} — 기록 제출 중…`;
         try {
-            const r = await apiFetch(`/api/solo/games/${session.gameSessionId}/finish`, {
+            const r = await apiFetch(`/api/solo/games/${submittedId}/finish`, {
                 method: 'POST',
                 body: { moves },
             });
+            // 응답을 기다리는 사이에 새 판이 시작됐다면 이 결과는 버린다 — 새 판 화면을 덮어쓰지 않게
+            if (session?.gameSessionId !== submittedId) return;
             renderResult(r);
             showPanel('result');
             session = null;
         } catch (e) {
+            // 위와 같은 이유 — 이미 새 판이 시작됐으면 옛 판의 실패를 화면에 꺼내지 않는다
+            if (session?.gameSessionId !== submittedId) return;
             // 세션 없음(404)·중복 제출(409)은 재시도해도 결과가 같다
             const retryable = e.code !== 'SOLO404' && e.code !== 'SOLO409';
             if (retryable && attempt < 3) {

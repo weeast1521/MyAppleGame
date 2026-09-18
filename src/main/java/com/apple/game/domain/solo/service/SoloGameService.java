@@ -58,6 +58,13 @@ public class SoloGameService {
     private final UserRepository userRepository;
     private final RankingRedisRepository rankingRedisRepository;
 
+    /**
+     * 새 판을 시작한다. 한 사람은 한 판만 — 이미 진행 중인 판이 있으면 그 판은 즉시 무효가 된다(#50).
+     *
+     * 정리를 서버가 하는 이유: 클라이언트에게 "이전 판을 취소해 달라"고 맡기면 요청이 실패하거나
+     * 브라우저가 죽었을 때 세션이 고아로 남는다. 서버가 시작 시점에 스스로 정리하면
+     * 프론트가 아무것도 하지 않아도 불변식이 지켜진다. TTL은 그래도 최후 방어선으로 남긴다.
+     */
     public SoloResDTO.Start start(Long userId) {
         String gameSessionId = UUID.randomUUID().toString();
         long boardSeed = ThreadLocalRandom.current().nextLong();
@@ -67,7 +74,20 @@ public class SoloGameService {
         SoloGameSession session = SoloGameSession.create(
                 gameSessionId, userId, boardSeed, System.currentTimeMillis());
 
-        soloGameRepository.save(session, Duration.ofSeconds(SESSION_TTL_SECONDS));
+        Duration ttl = Duration.ofSeconds(SESSION_TTL_SECONDS);
+
+        // 순서가 중요하다: 새 세션을 먼저 저장하고 포인터를 교체한다.
+        // 반대로 하면 포인터는 새 판을 가리키는데 그 세션이 아직 없는 창이 생긴다.
+        soloGameRepository.save(session, ttl);
+
+        // 포인터 교체는 원자적이다 — 연타로 두 요청이 겹쳐도 각자 서로 다른 직전 id를 받아
+        // 하나씩만 지우므로, 살아남는 세션은 항상 포인터가 가리키는 그 하나다.
+        soloGameRepository.swapActiveSession(userId, gameSessionId, ttl)
+                .filter(previous -> !previous.equals(gameSessionId))
+                .ifPresent(previous -> {
+                    soloGameRepository.delete(previous);
+                    log.debug("이전 솔로 세션 무효화 — userId={} previous={} new={}", userId, previous, gameSessionId);
+                });
 
         return new SoloResDTO.Start(gameSessionId, String.valueOf(boardSeed), board.snapshot(), TIME_LIMIT_SECONDS);
     }
@@ -88,6 +108,10 @@ public class SoloGameService {
         if (!soloGameRepository.delete(gameSessionId)) {
             throw new CustomException(SoloErrorCode.ALREADY_SUBMITTED);
         }
+
+        // 판이 끝났으니 활성 세션 포인터도 내린다. 이 세션을 가리킬 때만 지워지므로,
+        // 제출하는 사이에 사용자가 새 판을 시작했다면 새 판의 포인터는 건드리지 않는다.
+        soloGameRepository.clearActiveSession(userId, gameSessionId);
 
         // 4. moves의 시각 검증 — 좌표 재생보다 먼저. 제한시간을 넘겨 찍힌 move가 있으면
         //    보드 로직을 돌려볼 필요 없이 거부한다.
