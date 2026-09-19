@@ -12,7 +12,7 @@
 | OS | Rocky 8.8 · 2 vCPU · 15 GB RAM · swap 4 GB · 디스크 99 GB |
 | IP | 외부 223.130.152.28 · 내부 192.168.0.75 |
 | 앱 | Spring Boot 3.4 · MySQL 8.4 · Redis 7 · STOMP(SockJS) |
-| 상태 | **Phase 1 완료 (09-02)** — 서빙 중, main 머지 = 자동 배포. **Phase 2(HTTPS) 코드 반영 09-18, VM 적용 대기** — 도메인 myapplegame.duckdns.org |
+| 상태 | **Phase 1 완료 (09-02)** · **Phase 2(HTTPS) 완료 (09-20)** — https://myapplegame.duckdns.org 서빙, main 머지 = 자동 배포 |
 
 ---
 
@@ -112,7 +112,7 @@ CPU 2코어라 부하 테스트·다중 인스턴스 실험 시 앱끼리 경합
 
 - **Phase 1 — 데모 배포 (IP + http): ✅ 완료 (09-02 01:35, 이슈 #15 닫음)**
   Dockerfile(multi-stage·layered jar) · docker-compose.prod.yml(7서비스, blue-green 2색) · nginx 설정 · actuator+prometheus · Flyway · deploy.yml(test→build→GHCR→ssh 전환) · VM 초기화 런북 B-0~B-11 · compose 잔여 설정(Redis 영속성·MySQL 튜닝·TZ, PR #22)
-- **Phase 2 — HTTPS: 코드 반영 완료(09-18), VM 적용 대기.** DuckDNS(myapplegame.duckdns.org) → certbot(webroot) → 443 + http→https 리다이렉트 + HSTS → firewalld https 추가 → SockJS wss 자동 적용. **nginx/compose만 바뀌고 자바·프론트 코드는 무변경**(SockJS 상대경로, X-Forwarded-Proto·forward-headers-strategy 기존 반영).
+- **Phase 2 — HTTPS: ✅ 완료 (09-20).** DuckDNS(myapplegame.duckdns.org) → certbot(webroot) → 443 + http→https 리다이렉트 + HSTS → firewalld https 추가 → SockJS wss 자동 적용. **nginx/compose만 바뀌고 자바·프론트 코드는 무변경**(SockJS 상대경로, X-Forwarded-Proto·forward-headers-strategy 기존 반영).
   배관(ACME location·certbot 서비스·443 볼륨/포트)과 443 서버 블록은 인증서 유무 때문에 **커밋 2개로 분리**했다. deploy.sh는 nginx를 안 건드리므로(§9-1) 아래 절차는 VM에서 수동:
   ```bash
   # 0) DuckDNS: myapplegame.duckdns.org의 current ip = 223.130.152.28 (dig로 확인)
@@ -174,7 +174,7 @@ CPU 2코어라 부하 테스트·다중 인스턴스 실험 시 앱끼리 경합
 |---|---|---|
 | 22 | 전체 (제공처 고정) | SSH — 키 인증만, root 금지, fail2ban. IP 제한 불가(D11) |
 | 80 | 전체 | Nginx — Phase 2부터 ACME 챌린지 외 전부 443 리다이렉트 |
-| 443 | ACG 열림 · **firewalld는 VM 적용 시 https 추가** | Phase 2 TLS 종료(nginx). 코드 반영 09-18 |
+| 443 | ACG·firewalld 열림 | Phase 2 TLS 종료(nginx). 09-20 적용 |
 | 3000 | ACG 열림 · firewalld 차단 · listen 없음 | Grafana는 `/grafana` 경로로만 — 실질 폐쇄(D4) |
 | 3306 · 6379 · 8080 · 9090 | 비공개 | Docker 내부 네트워크 전용, `ports:` 미사용 |
 
@@ -237,6 +237,42 @@ docker stats --no-stream   # LIMIT 열로 mem_limit 적용 확인
 
 배포 전 가드: `deploy.sh`는 `--no-deps`로 `depends_on`의 대기 보장을 잃으므로, 시작 시
 `docker inspect`로 mysql이 healthy·redis가 running인지 확인하고 아니면 즉시 실패한다.
+
+### 9-2. 인증서 갱신 (Phase 2, 09-20)
+
+Let's Encrypt 인증서는 **90일**이다(현재 것: 2026-12-17 만료). 갱신은 `scripts/renew-cert.sh`가
+하고, VM의 cron이 하루 2회 호출한다.
+
+```
+0 3,15 * * * /opt/applegame/scripts/renew-cert.sh >> /opt/applegame/renew.log 2>&1
+```
+
+cron 등록은 VM 로컬 상태라 리포로 관리되지 않는다 — VM을 다시 만들면 이 줄을 다시 넣어야 한다.
+
+**갱신 방식은 webroot여야 한다.** `/etc/letsencrypt/renewal/myapplegame.duckdns.org.conf`의
+`authenticator` 값이 갱신 때 쓰이는데, 최초 발급을 `--standalone`으로 하면 그 값이 저장되어
+갱신이 반드시 실패한다:
+
+- standalone은 certbot이 **직접 80포트에 임시 웹서버를 띄우는** 방식이다
+- 그런데 80은 nginx가 쥐고 있고, certbot 컨테이너에는 포트 매핑도 없다
+- CA의 챌린지 요청은 nginx에 도달하고, nginx는 `/var/www/certbot`에서 파일을 찾는데
+  standalone certbot은 거기 쓴 적이 없다 → **404 → 인증 실패**
+
+09-20에 실제로 이 상태였고 `--dry-run`으로 발견했다. 수정은 위 conf의
+`authenticator = webroot` + `webroot_path = /var/www/certbot,`.
+
+**검증은 반드시 `--dry-run`으로.** 갱신 코드는 90일에 한 번 처음 돌고, 실패해도 조용하다
+(서버는 정상이라 모니터링에 안 잡히고, 만료 후에는 브라우저가 연결 자체를 거부해
+요청이 서버에 도달하지도 않는다).
+
+```bash
+docker compose -f docker-compose.prod.yml run --rm certbot renew --dry-run
+```
+
+dry-run은 스테이징 서버를 쓰므로 발급 한도(주당 5회)를 소모하지 않는다. 몇 번이든 돌려도 된다.
+
+**갱신 후 `nginx -s reload`가 필요하다** — nginx는 기동 시 인증서를 메모리에 올리므로
+파일이 바뀌어도 스스로 알지 못한다. 스크립트가 renew 직후 항상 reload한다(no-op이어도 무해).
 
 ## 10. 프로덕션 트러블슈팅 기록 (09-02)
 
