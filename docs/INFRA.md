@@ -12,7 +12,7 @@
 | OS | Rocky 8.8 · 2 vCPU · 15 GB RAM · swap 4 GB · 디스크 99 GB |
 | IP | 외부 223.130.152.28 · 내부 192.168.0.75 |
 | 앱 | Spring Boot 3.4 · MySQL 8.4 · Redis 7 · STOMP(SockJS) |
-| 상태 | **Phase 1 완료 (09-02)** · **Phase 2(HTTPS) 완료 (09-20)** — https://myapplegame.duckdns.org 서빙, main 머지 = 자동 배포 |
+| 상태 | **Phase 1 완료 (09-02)** · **Phase 2(HTTPS) 완료 (09-20)** · **도메인 이전 (10-04, #60)** — https://fruitboxduel.com 서빙, main 머지 = 자동 배포 |
 
 ---
 
@@ -50,7 +50,7 @@ D-번호는 이후 문서·PR에서 참조하는 식별자.
 |---|---|---|---|
 | D1 | 클라우드 자원 | **NCP VM 1대가 전부** | 매니지드 DB/Redis 없음 → 전부 컨테이너로 VM 안에서 운영 |
 | D2 | VM 스펙 | 2 vCPU / 15 GB / swap 4 GB | RAM 여유, CPU 병목. 메모리 예산은 §3 |
-| D3 | 도메인/TLS | 1차: 공인 IP + http. **Phase 2: DuckDNS(myapplegame.duckdns.org) + Let's Encrypt, nginx가 TLS 종료** | wss는 SockJS 상대경로라 자동. 자바·프론트 코드 무변경 — nginx/compose만 |
+| D3 | 도메인/TLS | 1차: 공인 IP + http. Phase 2: DuckDNS + Let's Encrypt, nginx가 TLS 종료. **10-04: 자체 도메인 fruitboxduel.com(Cloudflare Registrar, DNS only)으로 이전** | wss는 SockJS 상대경로라 자동. 자바·프론트 코드 무변경 — nginx/compose만. 이전 사유는 §9-3 |
 | D4 | 3000 포트 | ACG에서는 못 닫는다 → Grafana를 publish하지 않아 listen 없음 + firewalld 차단으로 **실질 폐쇄** | Grafana는 `/grafana` 경로로만 |
 | D5 | 배포 방식 | GitHub Actions → GHCR 이미지 → SSH → blue-green 전환 | 로컬 compose와 구조 일치 |
 | D6 | 인프라 목적 | 데모 배포 + 모니터링 학습 + 부하 테스트 + 다중 인스턴스 실험 | "단순하되 확장 지점을 열어두는" 구조 |
@@ -136,6 +136,7 @@ CPU 2코어라 부하 테스트·다중 인스턴스 실험 시 앱끼리 경합
   docker compose -f /opt/applegame/docker-compose.prod.yml run --rm certbot renew --quiet \
     && docker compose -f /opt/applegame/docker-compose.prod.yml exec -T nginx nginx -s reload
   ```
+- **도메인 이전 — DuckDNS → fruitboxduel.com: 🔄 진행 중 (10-04, #60).** 위 Phase 2 절차의 도메인·인증서 경로는 이전 전 기준이다. 사유·절차는 §9-3.
 - **Phase 3 — 모니터링 고도화**: Grafana 대시보드(JVM 힙·GC, HikariCP, HTTP p95, WS 세션 수), mysqld/redis-exporter 여부, 슬로우 쿼리 → `index_experiment.md` 연결
   - **09-18 1차 (#32)**: 데이터소스·대시보드 provisioning(`monitoring/grafana/`, 데이터소스 uid `prometheus` 고정) · HTTP 히스토그램 버킷 · 커스텀 지표(`websocket_sessions`·`websocket_inbound_*`·`ranking_aggregation_total`·`ranking_warmup_wait_total`) · 대시보드 "AppleGame — 부하 실습" 22패널 · 로컬 `--profile monitoring`
   - VM 반영은 배포로 되지 않는다(§9-1) — 머지 후 `docker compose -f docker-compose.prod.yml up -d grafana`
@@ -249,7 +250,7 @@ Let's Encrypt 인증서는 **90일**이다(현재 것: 2026-12-17 만료). 갱�
 
 cron 등록은 VM 로컬 상태라 리포로 관리되지 않는다 — VM을 다시 만들면 이 줄을 다시 넣어야 한다.
 
-**갱신 방식은 webroot여야 한다.** `/etc/letsencrypt/renewal/myapplegame.duckdns.org.conf`의
+**갱신 방식은 webroot여야 한다.** `/etc/letsencrypt/renewal/fruitboxduel.com.conf`(이전 전: `myapplegame.duckdns.org.conf`)의
 `authenticator` 값이 갱신 때 쓰이는데, 최초 발급을 `--standalone`으로 하면 그 값이 저장되어
 갱신이 반드시 실패한다:
 
@@ -273,6 +274,64 @@ dry-run은 스테이징 서버를 쓰므로 발급 한도(주당 5회)를 소모
 
 **갱신 후 `nginx -s reload`가 필요하다** — nginx는 기동 시 인증서를 메모리에 올리므로
 파일이 바뀌어도 스스로 알지 못한다. 스크립트가 renew 직후 항상 reload한다(no-op이어도 무해).
+
+### 9-3. 도메인 이전 — myapplegame.duckdns.org → fruitboxduel.com (10-04, #60)
+
+**왜.** HTTPS 전환 직후부터 크롬이 사이트에 빨간 전면 경고("위험한 사이트")를 띄웠다. 인증서·체인·
+혼합 콘텐츠는 전부 정상이었고, 원인은 **Google 세이프 브라우징이 사이트를 위험으로 분류**한 것
+(투명성 보고서 API 상태 코드 3 = Google 공식 악성 테스트 사이트와 같은 값, 마지막 평가 09-20 새벽).
+Google은 사유를 공개하지 않지만, `duckdns.org`가 피싱 호스팅에 가장 많이 쓰이는 공유 도메인이고
+(루트 도메인 자체가 2017년부터 "일부 위험" 상태), 도메인명에 `apple`, 첫 화면에 비밀번호 폼 —
+브랜드 피싱 패턴과 정확히 겹친다. 자물쇠(인증서)는 "도메인 통제"만 증명하고 사이트 평판은 별도
+시스템이 판정한다는 것을 배운 건. 상세는 노션 트러블슈팅 #8.
+
+Search Console 검토 요청으로 풀 수도 있지만 공유 DDNS 평판 때문에 재분류 위험이 남는다.
+자체 도메인 `fruitboxduel.com`(Cloudflare Registrar, 연 $10.46 고정, WHOIS 보호 무료)으로 이전.
+DNS는 **DNS only(회색 구름)** — Cloudflare 프록시를 켜면 TLS 종료 지점이 Cloudflare로 옮겨가
+SSL 모드·챌린지 경로 변수가 늘어난다. 현 구조(VM nginx가 TLS 종료) 그대로 유지하고, 필요하면
+나중에 Full (strict)로 프록시를 켠다.
+
+**무엇이 바뀌나 — 전부 설정뿐, 자바·프론트 무변경.**
+
+| 파일 | 변경 |
+|---|---|
+| `nginx/default.conf` | 443 `server_name`·인증서 경로 → `fruitboxduel.com`. 80 리다이렉트 대상 → 새 도메인. **www → apex 301 블록 추가** |
+| `docker-compose.prod.yml` | Grafana `GF_SERVER_ROOT_URL` → 새 도메인(로그인 리다이렉트 고정값). certbot 발급 예시 주석 |
+| `scripts/renew-cert.sh` | 만료일 로그의 인증서 경로 |
+
+**VM 절차 (수동 — deploy.sh는 nginx·grafana를 안 건드린다, §9-1).** 순서가 중요하다:
+443 블록이 새 인증서 경로를 가리키므로 **인증서를 먼저 받고 설정을 바꿔야** reload가 성공한다.
+80 블록은 `server_name _`라 DNS만 붙으면 새 도메인의 ACME 챌린지도 기존 설정 그대로 응답한다.
+
+```bash
+# 0) DNS 확인 — Cloudflare A 레코드 @·www → 223.130.152.28 (DNS only). 전파 확인:
+dig +short fruitboxduel.com www.fruitboxduel.com      # 둘 다 223.130.152.28
+# 1) 새 도메인 인증서 발급 — 설정 변경 전, 기존 80 블록이 챌린지에 응답한다.
+#    apex와 www를 한 장에(SAN 2개). 디렉터리 이름은 첫 -d 값 = fruitboxduel.com
+cd /opt/applegame
+docker compose -f docker-compose.prod.yml run --rm certbot certonly \
+  --webroot -w /var/www/certbot -d fruitboxduel.com -d www.fruitboxduel.com \
+  --email <메일> --agree-tos --no-eff-email
+# 2) 설정 반영 — 인증서가 있으니 443 블록이 유효하다. 문법 검사 후 reload(무중단)
+git pull --ff-only origin main
+docker compose -f docker-compose.prod.yml exec nginx nginx -t
+docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+# 3) Grafana는 env가 바뀌었으므로 재생성(잠깐 끊김 — 모니터링만)
+docker compose -f docker-compose.prod.yml up -d grafana
+# 4) 검증
+curl -sSI https://fruitboxduel.com/          | head -1          # HTTP/2 200
+curl -sSI http://fruitboxduel.com/           | grep -i location # https://fruitboxduel.com/
+curl -sSI https://www.fruitboxduel.com/      | grep -i location # https://fruitboxduel.com/
+curl -sSI http://myapplegame.duckdns.org/    | grep -i location # 옛 도메인 http도 새 도메인으로
+docker compose -f docker-compose.prod.yml run --rm certbot renew --dry-run   # 갱신 경로 확인
+# 5) 옛 인증서 정리 — renew가 만료된 duckdns 인증서를 계속 갱신 시도하지 않게
+docker compose -f docker-compose.prod.yml run --rm certbot delete --cert-name myapplegame.duckdns.org
+```
+
+**옛 주소는.** `http://myapplegame.duckdns.org`는 80 블록이 새 도메인으로 301한다.
+`https://myapplegame.duckdns.org`는 매칭되는 443 블록이 없어 default 서버(fruitboxduel.com 인증서)로
+떨어지고 **브라우저가 인증서 불일치로 거부**한다 — 어차피 세이프 브라우징 경고가 뜨던 주소라 살리지
+않는다. DuckDNS 레코드는 지우지 않고 만료되게 둔다(30일 미갱신 시 자동 소멸).
 
 ## 10. 프로덕션 트러블슈팅 기록 (09-02)
 
