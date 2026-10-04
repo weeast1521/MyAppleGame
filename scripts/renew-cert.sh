@@ -30,6 +30,6 @@ $COMPOSE exec -T nginx nginx -s reload
 
 # 만료일을 로그에 남긴다 — 갱신이 실제로 일어났는지 이전 실행과 비교할 수 있는 유일한 흔적이다.
 EXPIRY=$($COMPOSE run --rm --entrypoint openssl certbot \
-    x509 -enddate -noout -in /etc/letsencrypt/live/myapplegame.duckdns.org/fullchain.pem 2>/dev/null \
+    x509 -enddate -noout -in /etc/letsencrypt/live/fruitboxduel.com/fullchain.pem 2>/dev/null \
     | cut -d= -f2 || echo "확인 실패")
 echo "[$(date '+%F %T')] 완료 — 만료일: ${EXPIRY}"
