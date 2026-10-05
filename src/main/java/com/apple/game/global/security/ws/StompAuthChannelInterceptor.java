@@ -38,7 +38,8 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
         if (accessor != null && StompCommand.CONNECT.equals(accessor.getCommand())){
             String token = resolveToken(accessor.getFirstNativeHeader("Authorization"));
 
-            if (token == null || !jwtTokenProvider.validate(token)) {
+            // access만 허용 — refresh도 같은 키로 서명돼 있어 validate()만 보면 CONNECT가 통과한다
+            if (token == null || !jwtTokenProvider.validateAccessToken(token)) {
                 throw new MessageDeliveryException("유효하지 않은 토큰입니다.");
             }
 
