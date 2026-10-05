@@ -162,22 +162,42 @@ const Battle = (() => {
     /* ---------------- WebSocket ---------------- */
     function connect() {
         disconnect();
-        stomp = new StompJs.Client({
+        // 직전 CONNECT가 서버에 거절됐으면(ERROR 프레임) 다음 시도는 exp와 무관하게 재발급한다.
+        // exp만으로는 알 수 없는 거절(폐기된 토큰, typ 없는 옛 토큰 등)을 재시도 한 번으로 회복한다.
+        let forceRefresh = false;
+        const client = new StompJs.Client({
             webSocketFactory: () => new SockJS('/ws'),
-            connectHeaders: { Authorization: `Bearer ${Auth.accessToken}` },
             reconnectDelay: 3000,
+            // 최초 연결과 자동 재연결의 "매 시도" 직전에 호출된다(stompjs 7: _connect → await beforeConnect).
+            // 예전에는 connectHeaders를 Client 생성 시점의 토큰으로 고정해서, 입장 30분 뒤 재배포·순단으로
+            // 끊기면 만료된 토큰으로 3초마다 영원히 재시도하다 이탈 처리됐다(#63).
+            beforeConnect: async () => {
+                const result = await ensureFreshAccessToken({ force: forceRefresh });
+                forceRefresh = false;
+                if (result === 'REJECTED') {
+                    // refresh까지 만료·폐기 — 재연결을 멈추고 로그인 화면으로(auth:expired → Battle.cleanup).
+                    // deactivate 후에는 stompjs가 이번 연결 시도를 건너뛴다(_connect의 active 검사).
+                    client.deactivate();
+                    expireSession();
+                    return;
+                }
+                // NETWORK면 지금 토큰으로 시도한다 — 실패해도 reconnectDelay 뒤 다시 이 훅을 탄다
+                client.connectHeaders = { Authorization: `Bearer ${Auth.accessToken}` };
+            },
             onConnect: () => {
-                stomp.subscribe(`/topic/room/${roomCode}`, (f) => handleBroadcast(JSON.parse(f.body)));
-                stomp.subscribe('/user/queue/errors', (f) => handlePrivate(JSON.parse(f.body)));
-                stomp.subscribe('/user/queue/game', (f) => handlePrivate(JSON.parse(f.body)));
+                client.subscribe(`/topic/room/${roomCode}`, (f) => handleBroadcast(JSON.parse(f.body)));
+                client.subscribe('/user/queue/errors', (f) => handlePrivate(JSON.parse(f.body)));
+                client.subscribe('/user/queue/game', (f) => handlePrivate(JSON.parse(f.body)));
                 // ready는 연결마다 보낸다 — 게임 중 재접속이면 서버가 새 판 대신 GAME_SNAPSHOT을 보내준다
-                stomp.publish({ destination: `/app/room/${roomCode}/ready`, body: '{}' });
+                client.publish({ destination: `/app/room/${roomCode}/ready`, body: '{}' });
             },
             onStompError: (frame) => {
+                forceRefresh = true;
                 $('battleStatus').textContent = 'WebSocket 오류: ' + (frame.headers['message'] ?? '연결 실패');
             },
         });
-        stomp.activate();
+        stomp = client;
+        client.activate();
     }
 
     function disconnect() {
