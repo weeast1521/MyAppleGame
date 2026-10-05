@@ -12,7 +12,7 @@
 | OS | Rocky 8.8 · 2 vCPU · 15 GB RAM · swap 4 GB · 디스크 99 GB |
 | IP | 외부 223.130.152.28 · 내부 192.168.0.75 |
 | 앱 | Spring Boot 3.4 · MySQL 8.4 · Redis 7 · STOMP(SockJS) |
-| 상태 | **Phase 1 완료 (09-02)** · **Phase 2(HTTPS) 완료 (09-20)** · **도메인 이전 (10-04, #60)** — https://fruitboxduel.com 서빙, main 머지 = 자동 배포 |
+| 상태 | **Phase 1 완료 (09-02)** · **Phase 2(HTTPS) 완료 (09-20)** · **도메인 이전 완료 (10-06, #60)** — https://fruitboxduel.com 서빙, main 머지 = 자동 배포 |
 
 ---
 
@@ -136,7 +136,8 @@ CPU 2코어라 부하 테스트·다중 인스턴스 실험 시 앱끼리 경합
   docker compose -f /opt/applegame/docker-compose.prod.yml run --rm certbot renew --quiet \
     && docker compose -f /opt/applegame/docker-compose.prod.yml exec -T nginx nginx -s reload
   ```
-- **도메인 이전 — DuckDNS → fruitboxduel.com: 🔄 진행 중 (10-04, #60).** 위 Phase 2 절차의 도메인·인증서 경로는 이전 전 기준이다. 사유·절차는 §9-3.
+- **도메인 이전 — DuckDNS → fruitboxduel.com: ✅ 완료 (10-06, #60·PR #61).** 위 Phase 2 절차의 도메인·인증서 경로는 이전 전 기준이다. 사유·절차·실제 수행 기록은 §9-3.
+- **HSTS 단일 출처 (10-06).** HSTS 헤더는 nginx만 보낸다. 그 전까지는 Spring Security 기본 HSTS(1년 + includeSubDomains)가 nginx 헤더(30일)보다 먼저 나가서, 첫 헤더만 처리하는 규칙(RFC 6797 §8.1)에 따라 nginx 정책이 한 번도 적용되지 않았다. `SecurityConfig`에서 Spring 쪽을 껐다.
 - **Phase 3 — 모니터링 고도화**: Grafana 대시보드(JVM 힙·GC, HikariCP, HTTP p95, WS 세션 수), mysqld/redis-exporter 여부, 슬로우 쿼리 → `index_experiment.md` 연결
   - **09-18 1차 (#32)**: 데이터소스·대시보드 provisioning(`monitoring/grafana/`, 데이터소스 uid `prometheus` 고정) · HTTP 히스토그램 버킷 · 커스텀 지표(`websocket_sessions`·`websocket_inbound_*`·`ranking_aggregation_total`·`ranking_warmup_wait_total`) · 대시보드 "AppleGame — 부하 실습" 22패널 · 로컬 `--profile monitoring`
   - VM 반영은 배포로 되지 않는다(§9-1) — 머지 후 `docker compose -f docker-compose.prod.yml up -d grafana`
@@ -215,6 +216,14 @@ CPU 2코어라 부하 테스트·다중 인스턴스 실험 시 앱끼리 경합
 설정이 바뀌어 있으면 재생성한다. 09-18 00:10 배포가 그 사례다(§10 참고) — 무중단 배포
 도중 DB·Redis가 교체되어 서빙 중이던 구 색이 30초간 둘을 모두 잃었다.
 blue-green의 무중단 보장은 앱 컨테이너에만 성립하므로, 배포가 할 수 있는 일을 그 범위로 좁혔다.
+
+**예외 — nginx 설정 파일은 배포 때 반영된다.** 배포는 nginx 컨테이너를 재생성하지 않지만,
+워크플로의 `git pull`로 `nginx/*.conf`가 바뀐 뒤 `deploy.sh`가 색 전환을 위해 `nginx -s reload`를
+실행한다. reload는 include 파일만이 아니라 **디스크의 설정 전체를 다시 읽는다** — 즉 nginx 설정 변경은
+머지 직후 배포에서 그대로 운영에 적용된다(10-06 도메인 이전이 이 경로로 반영됐다).
+그래서 nginx 설정이 외부 파일(인증서 등)에 의존하게 바꿀 때는 **그 파일을 VM에 먼저 준비한 뒤 머지**한다.
+준비 없이 머지하면 reload가 실패해 배포가 전환 직전에 멈춘다(`set -e` — 기존 색이 계속 서빙하므로 다운타임은 없다).
+compose의 nginx 서비스 정의(포트·볼륨 등)는 이 경로로 반영되지 않는다 — 아래 절차대로 재생성해야 한다.
 
 **인프라 설정을 바꿨을 때의 적용 절차** (VM `/opt/applegame`에서 수동):
 
@@ -299,7 +308,7 @@ SSL 모드·챌린지 경로 변수가 늘어난다. 현 구조(VM nginx가 TLS 
 | `docker-compose.prod.yml` | Grafana `GF_SERVER_ROOT_URL` → 새 도메인(로그인 리다이렉트 고정값). certbot 발급 예시 주석 |
 | `scripts/renew-cert.sh` | 만료일 로그의 인증서 경로 |
 
-**VM 절차 (수동 — deploy.sh는 nginx·grafana를 안 건드린다, §9-1).** 순서가 중요하다:
+**VM 절차 (§9-1 — 배포의 reload가 nginx 설정을 반영하고, grafana env는 수동).** 순서가 중요하다:
 443 블록이 새 인증서 경로를 가리키므로 **인증서를 먼저 받고 설정을 바꿔야** reload가 성공한다.
 80 블록은 `server_name _`라 DNS만 붙으면 새 도메인의 ACME 챌린지도 기존 설정 그대로 응답한다.
 
@@ -327,6 +336,13 @@ docker compose -f docker-compose.prod.yml run --rm certbot renew --dry-run   # �
 # 5) 옛 인증서 정리 — renew가 만료된 duckdns 인증서를 계속 갱신 시도하지 않게
 docker compose -f docker-compose.prod.yml run --rm certbot delete --cert-name myapplegame.duckdns.org
 ```
+
+**실제 수행 (10-06).** 위 절차의 2)는 수동으로 할 필요가 없었다 — PR #61 머지가 자동 배포를 일으켰고,
+배포의 `git pull` → `deploy.sh`의 `nginx -s reload`가 새 설정을 적용했다(§9-1 예외). 실제 순서:
+DNS 레코드 추가·전파 확인 → 인증서 발급 + `renew --dry-run` → **PR 머지(=배포·reload)** → `up -d grafana`
+→ 검증 → 옛 인증서 delete → dry-run 재확인(fruitboxduel.com 단독 success). 인증서 만료 2027-01-03.
+1)을 머지보다 먼저 한 것이 핵심이다 — 반대로 했다면 배포의 reload가 없는 인증서 경로 때문에 실패했다.
+검증할 때는 시크릿 창이나 curl을 쓴다. 브라우저가 이전의 301(→ duckdns)을 캐시하고 있다.
 
 **옛 주소는.** `http://myapplegame.duckdns.org`는 80 블록이 새 도메인으로 301한다.
 `https://myapplegame.duckdns.org`는 매칭되는 443 블록이 없어 default 서버(fruitboxduel.com 인증서)로
