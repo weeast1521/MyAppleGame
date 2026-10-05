@@ -152,3 +152,30 @@ async function reissueOnce() {
     Auth.saveTokens(payload.result);
     return 'OK';
 }
+
+/* 액세스 토큰의 payload(exp 등). 서명 검증은 서버 몫 — 여기서는 "갱신이 필요한가" 판단 힌트로만 쓴다 */
+function accessTokenClaims() {
+    const token = Auth.accessToken;
+    if (!token) return null;
+    try {
+        const b64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        return JSON.parse(atob(b64));
+    } catch {
+        return null;
+    }
+}
+
+// 만료까지 이보다 적게 남았으면 미리 재발급 — 연결 직후 만료되는 경계를 피한다
+const ACCESS_REFRESH_MARGIN_SEC = 60;
+
+/*
+ * apiFetch를 거치지 않는 곳(STOMP CONNECT)에서 쓸 access를 확보한다. 결과는 tryReissue와 같은 세 갈래.
+ * REST는 401 → 재발급 경로가 있지만, STOMP CONNECT의 거절은 ERROR 프레임이라 그 경로를 타지 않는다.
+ * force: exp는 남았는데 서버가 거절한 경우(폐기된 토큰, 서버 정책 변경 등) — exp와 무관하게 재발급
+ */
+function ensureFreshAccessToken({ force = false } = {}) {
+    const claims = accessTokenClaims();
+    const secondsLeft = claims && claims.exp ? claims.exp - Date.now() / 1000 : -1;
+    if (!force && secondsLeft > ACCESS_REFRESH_MARGIN_SEC) return Promise.resolve('OK');
+    return tryReissue();
+}
