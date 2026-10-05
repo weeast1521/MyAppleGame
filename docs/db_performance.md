@@ -179,6 +179,8 @@ B를 고른 이유: 이 서비스에 "즉시 차단"이 필요한 운영 요구�
 
 **구현** — `JwtTokenProvider.createAccessToken(userId, role)`에 `role` 클레임, 필터는 서명 검증 + 클레임 파싱만. `CustomUserDetails`는 User 엔티티 대신 `(userId, role)`만 갖는다(엔티티를 들고 있으면 인증마다 DB 조회가 강제된다). 전환기 호환: role 클레임이 없는 옛 토큰은 DB 조회로 폴백.
 
+> **후속 (2026-10-05) — 전환기 폴백이 만든 보안 구멍.** "role 클레임이 없으면 옛 access"라는 추론은 틀렸다 — refresh 토큰도 role이 없다. 같은 키로 서명되므로 refresh를 Bearer로 보내면 이 폴백을 타고 인증이 성공했고, 필터는 `refresh_token` 테이블을 보지 않아 로그아웃·회전으로 폐기된 refresh(14일)로도 API를 호출할 수 있었다. 수정: 토큰에 `typ`(ACCESS/REFRESH) 클레임을 넣고 필터·STOMP는 `validateAccessToken`, 재발급은 `validateRefreshToken`만 쓴다. 폴백은 삭제(필터의 `UserRepository` 의존도 사라짐 — B안의 "필터는 DB를 읽지 않는다"가 이제 코드 구조로 보장된다). 교훈: 전환기 코드는 제거 시점을 정해둘 것, 종류는 "무엇이 없다"로 추론하지 말고 명시할 것.
+
 ---
 
 ## E5. 대량 삽입 — JPA saveAll vs JdbcTemplate batch
