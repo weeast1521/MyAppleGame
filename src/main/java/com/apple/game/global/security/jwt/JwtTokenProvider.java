@@ -59,17 +59,14 @@ public class JwtTokenProvider {
     }
 
     // ----- 검증 -----
-    /**
-     * 유효하면 true. 예외를 밖으로 던지지 않는다.
-     * — 필터는 "토큰이 없거나 잘못됨"을 익명 통과로 처리해야 하기 때문(랭킹 API가 비로그인도 허용).
-     */
-    // jwt = header(어떤 알고리즘으로 서명?) + payload(실 데이터. sub, iat, exp 등 클레임들) + signature(secretKey로 header+payload를 서명한 값)
-    public boolean validate(String token) {
-        return parseSafely(token) != null;
-    }
+    // jwt = header(어떤 알고리즘으로 서명?) + payload(실 데이터. sub, typ, iat, exp 등 클레임들) + signature(secretKey로 header+payload를 서명한 값)
+    // 종류를 묻지 않는 "서명·만료만" 검증은 일부러 두지 않는다 — 두 토큰이 같은 키로 서명돼서
+    // 그것만 쓰면 refresh(14일)가 access 자리에서 통과한다. 쓰는 곳은 반드시 기대하는 종류를 고른다.
 
-    // 서명·만료가 유효하고 typ=ACCESS일 때만 true — 인증 필터·STOMP CONNECT용.
-    // 두 토큰은 같은 키로 서명되므로 validate()만 쓰면 refresh(14일)가 API 인증을 통과한다.
+    /**
+     * 서명·만료가 유효하고 typ=ACCESS일 때만 true — 인증 필터·STOMP CONNECT용.
+     * 예외를 밖으로 던지지 않는다 — 필터는 "토큰이 없거나 잘못됨"을 익명 통과로 처리해야 하기 때문(랭킹 API가 비로그인도 허용).
+     */
     public boolean validateAccessToken(String token) {
         Claims claims = parseSafely(token);
         return claims != null && TokenType.ACCESS.name().equals(claims.get(TYPE_CLAIM, String.class));
