@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -39,6 +40,11 @@ public class SecurityConfig {
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // HSTS는 TLS를 끝내는 nginx가 단독으로 보낸다(nginx/default.conf). Spring 기본값은
+                // "보안 요청이면 1년 + includeSubDomains"인데, forward-headers-strategy로 https가 전달되니
+                // 프로덕션에서 이 헤더가 nginx 것과 함께 2개 나갔다. 브라우저는 첫 번째만 처리하므로(RFC 6797 §8.1)
+                // 실제로는 의도한 nginx 정책(30일, 서브도메인 미포함) 대신 Spring 기본값이 적용되고 있었다.
+                .headers(h -> h.httpStrictTransportSecurity(HeadersConfigurer.HstsConfig::disable))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(SWAGGER_PATHS).permitAll()
                         .requestMatchers(STATIC_PATHS).permitAll()
