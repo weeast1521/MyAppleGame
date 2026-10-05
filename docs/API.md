@@ -2,6 +2,9 @@
 
 - Base URL: `http://localhost:8080`
 - 인증: **JWT** — REST는 `Authorization: Bearer {accessToken}` 헤더, WebSocket은 STOMP CONNECT 헤더로 전달
+  - 토큰은 두 종류이며 `typ` 클레임으로 구분된다: `ACCESS`(30분, role 포함) / `REFRESH`(14일). 같은 키로 서명되지만 **용도가 다르면 거절**한다.
+  - REST·STOMP CONNECT는 `ACCESS`만 인정 — refresh를 Bearer로 보내면 익명 취급(보호된 API는 `AUTH401`), STOMP는 CONNECT 거부
+  - `/api/auth/reissue`는 `REFRESH`만 인정 — access를 보내면 `AUTH401_3`
 - 로그인 수단 3종: 일반(email/password), 카카오, 네이버 — 소셜은 **프론트가 인가코드를 받아 백엔드에 전달**하는 방식
 - 모든 REST 응답은 공통 포맷 `CustomResponse`를 따릅니다.
 
@@ -146,7 +149,7 @@
 
 | 에러 코드 | 상황 |
 |---|---|
-| `AUTH401_3` | 만료되었거나 폐기된 리프레시 토큰 (재로그인 필요) |
+| `AUTH401_3` | 만료되었거나 폐기된 리프레시 토큰, 또는 refresh가 아닌 토큰(access 등) (재로그인 필요) |
 
 ### 1-6. 로그아웃
 | 항목 | 내용 |

@@ -84,8 +84,8 @@ public class AuthService {
     public ReissueResDTO.Reissue reissue(ReissueReqDTO.Reissue request) {
         String refreshToken = request.refreshToken();
 
-        // 1) 토큰 자체 검증 (서명 위조·만료)
-        if (!jwtTokenProvider.validate(refreshToken)) throw new CustomException(AuthErrorCode.INVALID_REFRESH_TOKEN);
+        // 1) 토큰 자체 검증 (서명 위조·만료·종류) — access를 들고 오면 DB까지 가지 않고 여기서 거절
+        if (!jwtTokenProvider.validateRefreshToken(refreshToken)) throw new CustomException(AuthErrorCode.INVALID_REFRESH_TOKEN);
 
         // 2) DB 존재 확인 — 없으면 이미 회전으로 폐기됐거나 로그아웃된 토큰
         RefreshToken saved = refreshTokenRepository.findByToken(refreshToken)
