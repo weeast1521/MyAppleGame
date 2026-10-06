@@ -18,6 +18,7 @@ public class SoloResDTO {
     public record Finish(
             Long recordId,
             int score,
+            int bestScore,          // 이번 판을 포함한 내 역대 최고점
             boolean isPersonalBest,
             Integer allTimeRank
     ){

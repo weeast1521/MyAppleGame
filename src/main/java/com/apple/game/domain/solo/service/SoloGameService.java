@@ -172,7 +172,7 @@ public class SoloGameService {
         int bestScore = Math.max(score, previousBest);
         int allTimeRank = (int) soloRecordRepository.countUsersWithScoreAbove(bestScore) + 1;
 
-        return new SoloResDTO.Finish(record.getId(), score, isPersonalBest, allTimeRank);
+        return new SoloResDTO.Finish(record.getId(), score, bestScore, isPersonalBest, allTimeRank);
     }
 
     @Transactional(readOnly = true)
