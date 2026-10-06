@@ -1,4 +1,4 @@
-# API 명세서 — MyAppleGame
+# API 명세서 — FruitBoxDuel
 
 - Base URL: `http://localhost:8080`
 - 인증: **JWT** — REST는 `Authorization: Bearer {accessToken}` 헤더, WebSocket은 STOMP CONNECT 헤더로 전달

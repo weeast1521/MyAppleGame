@@ -6,7 +6,7 @@
 
 # blue/green이 공유하는 앱 설정. YAML 앵커로 중복 제거.
 x-app: &app
-  image: ghcr.io/weeast1521/myapplegame:${APP_TAG:-latest}
+  image: ghcr.io/weeast1521/fruitboxduel:${APP_TAG:-latest}
   environment:
     # 호스트(VM)는 KST로 맞췄지만 컨테이너는 각자 UTC가 기본 — 로그·랭킹 시각이
     # 9시간 어긋나지 않게 시각을 다루는 컨테이너마다 TZ를 넣는다(§2).
