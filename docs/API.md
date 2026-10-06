@@ -243,10 +243,15 @@
 {
   "recordId": 42,
   "score": 86,
+  "bestScore": 86,
   "isPersonalBest": true,
   "allTimeRank": 17
 }
 ```
+
+`bestScore`는 이번 판을 포함한 내 역대 최고점이다. 이번 판이 그 최고점을 새로 썼을 때만 `isPersonalBest`가 `true`다.
+
+`allTimeRank`는 이번 판 점수가 아니라 **내 최고점 기준** 순위다 — 랭킹이 유저당 최고점 한 줄이므로, 최고점을 못 넘긴 판(`isPersonalBest: false`)에서도 랭킹 탭·summary와 같은 값이 나온다.
 
 | 에러 코드 | 상황 |
 |---|---|
