@@ -189,10 +189,29 @@ public class RoomRedisRepository {
     // 그 재전송이 "정상적인 두 번째 clear"와 구분되지 않는다. 그래서 프론트가 요청마다 UUID를 붙이고,
     // 서버는 SADD의 반환값(새로 추가되면 1, 이미 있으면 0)으로 첫 도착만 통과시킨다.
     // SADD 자체가 원자 명령이라 같은 requestId가 동시에 두 번 와도 정확히 하나만 1을 받는다.
-    public boolean markRequestOnce(String code, String requestId) {
-        Long added = redisTemplate.opsForSet().add(reqsKey(code), requestId);
-        redisTemplate.expire(reqsKey(code), REQS_TTL); // 판이 끝나고도 SET이 남지 않도록 TTL 갱신
-        return added != null && added == 1;
+    //
+    // 멤버 확인을 SADD 앞에 둔다(#58): 예전엔 SADD 가 먼저라 존재하지 않는 방 코드로도 reqs 키가 생겼다
+    // (TTL 5분이지만 코드만 바꿔 보내면 무한히 만들 수 있다). 확인과 SADD 를 Lua 한 번으로 묶어
+    // 왕복 수는 오히려 줄었다(SADD + EXPIRE 2회 → 1회).
+    private static final DefaultRedisScript<String> MARK_REQUEST_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('HGET', KEYS[1], 'hostId') ~= ARGV[1] and redis.call('HGET', KEYS[1], 'guestId') ~= ARGV[1] then
+                return 'NOT_MEMBER'
+            end
+            if redis.call('SADD', KEYS[2], ARGV[2]) == 0 then
+                return 'DUPLICATE'
+            end
+            redis.call('EXPIRE', KEYS[2], ARGV[3])
+            return 'OK'
+            """, String.class);
+
+    public enum MarkResult { OK, DUPLICATE, NOT_MEMBER }
+
+    public MarkResult markRequestOnce(String code, Long userId, String requestId) {
+        String result = redisTemplate.execute(
+                MARK_REQUEST_SCRIPT,
+                List.of(roomKey(code), reqsKey(code)),
+                String.valueOf(userId), requestId, String.valueOf(REQS_TTL.toSeconds()));
+        return MarkResult.valueOf(result);
     }
 
     // APPLES_CLEARED 브로드캐스트용 — 이번 판 점수 (userId -> score). scores Hash는 clear 성공 시 HINCRBY로 쌓인다
