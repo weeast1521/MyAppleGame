@@ -1,4 +1,4 @@
-# ERD — MyAppleGame
+# ERD — FruitBoxDuel
 
 ## 설계 원칙
 

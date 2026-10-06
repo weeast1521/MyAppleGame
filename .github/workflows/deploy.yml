@@ -14,7 +14,7 @@ on:
   workflow_dispatch: # 수동 재배포용
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/myapplegame
+  IMAGE: ghcr.io/${{ github.repository_owner }}/fruitboxduel
 
 jobs:
   test:

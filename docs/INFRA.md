@@ -39,7 +39,7 @@ Nginx만 바깥에 서고 나머지는 Docker 내부 네트워크에만 존재�
 │  ※ DB·Redis 등은 ports: 미사용 — Docker 내부 네트워크 전용        │
 └───────────────────────────────────────────────────────────────────┘
      ▲ ssh: git pull → scripts/deploy.sh <sha> (blue-green 전환)
-GitHub Actions: test → build → push GHCR ghcr.io/<owner>/myapplegame:<sha>
+GitHub Actions: test → build → push GHCR ghcr.io/<owner>/fruitboxduel:<sha>
 ```
 
 ## 1. 확정한 결정 (D1~D11)
