@@ -6,11 +6,11 @@ public class SignupResDTO {
 
     public record Signup(
             Long userId,
-            String email,
+            String loginId,
             String nickname
     ) {
         public static Signup from(User user) {
-            return new Signup(user.getId(), user.getEmail(), user.getNickname());
+            return new Signup(user.getId(), user.getLoginId(), user.getNickname());
         }
     }
 }

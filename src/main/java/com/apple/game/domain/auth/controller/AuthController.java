@@ -29,7 +29,7 @@ public class AuthController {
 
     private final AuthService authService;
 
-    @Operation(summary = "일반 회원가입(Provider = LOCAL)", description = "EMAIL, PASSWORD, NICKNAME으로 가입한다.")
+    @Operation(summary = "일반 회원가입(Provider = LOCAL)", description = "LOGIN_ID, PASSWORD, NICKNAME으로 가입한다. 이메일은 받지 않는다(#59).")
     @PostMapping("/signup")
     public ResponseEntity<CustomResponse<SignupResDTO.Signup>> signup(
             @Valid @RequestBody SignupReqDTO.Signup request) {
@@ -40,7 +40,7 @@ public class AuthController {
     }
 
     @Operation(summary = "일반 로그인",
-            description = "email/password로 로그인하고 accessToken·refreshToken을 발급한다. "
+            description = "loginId/password로 로그인하고 accessToken·refreshToken을 발급한다. "
                     + "인증 실패 시 AUTH401_1, 소셜 가입 계정이면 AUTH409_1을 반환한다.")
     @PostMapping("/login")
     public ResponseEntity<CustomResponse<LoginResDTO.Login>> login(
