@@ -41,8 +41,8 @@
         <p class="hint">합이 <b>10</b>이 되도록 사과를 드래그해서 지우세요.</p>
 
         <form id="loginForm">
-            <label>이메일
-                <input id="loginEmail" type="email" autocomplete="email" required/>
+            <label>아이디
+                <input id="loginId" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required/>
             </label>
             <label>비밀번호
                 <input id="loginPassword" type="password" autocomplete="current-password" required/>
@@ -51,8 +51,9 @@
         </form>
 
         <form id="signupForm" class="hidden">
-            <label>이메일
-                <input id="signupEmail" type="email" autocomplete="email" required/>
+            <label>아이디
+                <input id="signupId" type="text" autocomplete="username" autocapitalize="none" spellcheck="false"
+                       pattern="[a-z0-9_]{4,20}" maxlength="20" placeholder="영문 소문자·숫자·_ 4~20자" required/>
             </label>
             <label>비밀번호
                 <input id="signupPassword" type="password" placeholder="8자 이상, 영문+숫자+특수문자" autocomplete="new-password" required/>
@@ -60,6 +61,7 @@
             <label>닉네임
                 <input id="signupNickname" type="text" maxlength="12" placeholder="2~12자" required/>
             </label>
+            <p class="hint">이메일은 받지 않습니다. 비밀번호를 잊으면 복구할 수 없으니 기억해 두세요. 닉네임은 랭킹에 공개됩니다.</p>
             <button type="submit" class="primary">회원가입</button>
         </form>
 
