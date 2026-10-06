@@ -106,10 +106,23 @@ async function apiFetch(path, { method = 'GET', body, auth = true, _retried = fa
 
     if (!res.ok || (payload && payload.isSuccess === false)) {
         const code = (payload && payload.code) || `HTTP${res.status}`;
-        const message = (payload && payload.message) || `요청 실패 (HTTP ${res.status})`;
+        // @Valid 실패(COMMON400_1)는 공통 message("요청 데이터 검증에 실패했습니다")가 아니라
+        // result 에 담긴 필드별 사유("비밀번호는 8자 이상 …")를 보여준다 — 사용자가 무엇을 고칠지 알아야 다음 시도를 한다
+        const fieldMessages = validationMessages(payload);
+        const message = fieldMessages || (payload && payload.message) || `요청 실패 (HTTP ${res.status})`;
         throw new ApiError(code, message, res.status);
     }
     return payload ? payload.result : null;
+}
+
+/*
+ * GlobalExceptionHandler 가 검증 실패를 { code: 'COMMON400_1', result: { 필드: 사유, … } } 로 내려준다.
+ * 사유들을 한 줄로 잇는다. 필드가 여럿이면 전부 — 한 번에 다 고치게. 검증 실패가 아니면 null.
+ */
+function validationMessages(payload) {
+    if (!payload || payload.code !== 'COMMON400_1' || !payload.result || typeof payload.result !== 'object') return null;
+    const msgs = Object.values(payload.result).filter((m) => typeof m === 'string' && m);
+    return msgs.length ? msgs.join(' ') : null;
 }
 
 /* refresh까지 거절됐을 때 — 저장된 인증을 지우고 화면 전환은 app.js의 auth:expired 핸들러에 맡긴다 */
