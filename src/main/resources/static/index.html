@@ -3,20 +3,42 @@
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>🍎 FruitBoxDuel</title>
+    <title>FruitBoxDuel — 사과게임</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+    <!-- 디스플레이 Jua(로고·점수·타이머·사과 숫자) / 본문 Noto Sans KR -->
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;500;700&display=swap"/>
     <!-- 실시간 통신 라이브러리 (로컬 개발 서버이므로 CDN 사용) -->
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7/bundles/stomp.umd.min.js"></script>
     <link rel="stylesheet" href="/style.css"/>
 </head>
 <body>
+<!-- 로고(상자 속 사과 두 알) — 인증 화면과 헤더에서 <use>로 재사용 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="logoMark" viewBox="0 0 48 48">
+        <rect x="4" y="18" width="40" height="26" rx="5" fill="#8E5B23"/>
+        <rect x="7" y="21" width="34" height="20" rx="3" fill="#D29A52"/>
+        <rect x="7" y="29" width="34" height="3" fill="#8E5B23" opacity=".5"/>
+        <circle cx="17" cy="19" r="8" fill="#E03A2E"/>
+        <circle cx="31" cy="17" r="8.5" fill="#E03A2E"/>
+        <circle cx="14.5" cy="16.5" r="2.4" fill="#FF8F7E" opacity=".8"/>
+        <circle cx="28.5" cy="14" r="2.6" fill="#FF8F7E" opacity=".8"/>
+        <path d="M31 9c2-3 5-3 7-2-1 3-4 4-7 2z" fill="#3B9B4C"/>
+    </symbol>
+</svg>
+
 <div id="app">
 
     <!-- ================= 인증 화면 ================= -->
     <section id="view-auth" class="card hidden">
-        <h1>🍎 FruitBoxDuel <span class="sub">사과게임</span></h1>
-        <p class="hint">합이 <b>10</b>이 되도록 사과를 드래그하세요. 솔로 기록 도전과 2인 실시간 대전을 지원합니다.</p>
+        <h1 class="logo">
+            <svg aria-hidden="true"><use href="#logoMark"/></svg>
+            <span class="name">Fruit<em>Box</em>Duel</span>
+        </h1>
+        <span class="sub">사과게임 · 솔로 기록 도전 & 2인 실시간 대전</span>
+        <p class="hint">합이 <b>10</b>이 되도록 사과를 드래그해서 지우세요.</p>
 
         <form id="loginForm">
             <label>이메일
@@ -52,7 +74,10 @@
     <!-- ================= 메인 화면 ================= -->
     <section id="view-home" class="hidden">
         <header class="appHeader card">
-            <div class="brand">🍎 FruitBoxDuel</div>
+            <div class="logo brand">
+                <svg aria-hidden="true"><use href="#logoMark"/></svg>
+                <span class="name">Fruit<em>Box</em>Duel</span>
+            </div>
             <div class="userBox">
                 <span id="headerNickname"></span>
                 <button id="btnLogout" class="tiny">로그아웃</button>
@@ -68,15 +93,21 @@
         </nav>
 
         <!-- ===== 솔로 탭 ===== -->
-        <section id="tab-solo" class="card tabPanel">
-            <div id="soloIntro">
-                <h2>솔로 모드</h2>
-                <p class="hint">120초 동안 최대한 많은 사과를 지우세요. 시간이 끝나면 기록이 자동으로 저장되고 랭킹에 반영됩니다.</p>
+        <section id="tab-solo" class="tabPanel">
+            <div id="soloIntro" class="modeCard solo">
+                <svg class="art" viewBox="0 0 100 100" aria-hidden="true">
+                    <circle cx="60" cy="55" r="34" fill="#FF8F7E" opacity=".35"/>
+                    <circle cx="60" cy="55" r="24" fill="#fff" opacity=".18"/>
+                    <text x="60" y="66" text-anchor="middle" font-family="Jua, sans-serif" font-size="34" fill="#fff">10</text>
+                </svg>
+                <span class="tag">Solo · 120초</span>
+                <h2>솔로 기록 도전</h2>
+                <p class="hint">17×10 보드에서 120초. 지운 사과 수가 점수가 되고, 끝나면 기록이 자동 저장되어 랭킹에 반영됩니다.</p>
                 <button id="btnSoloStart" class="primary">게임 시작</button>
                 <p id="soloMsg" class="msg"></p>
             </div>
 
-            <div id="soloGame" class="hidden">
+            <div id="soloGame" class="card hidden">
                 <div class="topbar">
                     <div class="roomInfo">점수 <b id="soloScore">0</b></div>
                     <div id="soloTimer" class="timer">--</div>
@@ -84,13 +115,17 @@
                     <button id="btnSoloNewGame" class="tiny">새 게임</button>
                 </div>
                 <div id="soloStatus" class="status"></div>
-                <div id="soloBoardWrap" class="boardWrap">
-                    <div id="soloBoard" class="board"></div>
-                    <div id="soloSelBox" class="selBox hidden"></div>
+                <div class="crate">
+                    <div id="soloBoardWrap" class="boardWrap">
+                        <div id="soloBoard" class="board"></div>
+                        <div id="soloSelBox" class="selBox hidden"></div>
+                    </div>
                 </div>
+                <p class="boardHint">사과를 드래그해 직사각형으로 묶으세요. 합이 10이면 사라집니다.</p>
+                <p class="rotateHint">폰을 가로로 돌리면 사과가 더 크게 보여요.</p>
             </div>
 
-            <div id="soloResult" class="hidden">
+            <div id="soloResult" class="card hidden">
                 <h2>게임 결과</h2>
                 <div id="soloResultGrid" class="summaryGrid"></div>
                 <div class="row center">
@@ -100,12 +135,18 @@
         </section>
 
         <!-- ===== 대전 탭 ===== -->
-        <section id="tab-battle" class="card tabPanel hidden">
-            <div id="battleLobby">
-                <h2>2인 대전</h2>
-                <p class="hint">같은 보드에서 실시간으로 경쟁합니다. 한 방에서 여러 판을 이어서 하면 상대와의 승수가 쌓이고, 상대가 나가면 초기화됩니다.</p>
+        <section id="tab-battle" class="tabPanel hidden">
+            <div id="battleLobby" class="modeCard duel">
+                <svg class="art" viewBox="0 0 100 100" aria-hidden="true">
+                    <circle cx="42" cy="50" r="22" fill="#fff" opacity=".22"/>
+                    <circle cx="70" cy="58" r="22" fill="#fff" opacity=".22"/>
+                    <text x="56" y="62" text-anchor="middle" font-family="Jua, sans-serif" font-size="26" fill="#fff">VS</text>
+                </svg>
+                <span class="tag">Duel · 1 vs 1</span>
+                <h2>실시간 대전</h2>
+                <p class="hint">같은 보드를 두고 겨룹니다. 먼저 지운 사람이 점수를 가져가고, 한 방에서 몇 판이든 이어서 할 수 있어요. 상대가 나가면 승수는 초기화됩니다.</p>
                 <button id="btnRoomCreate" class="primary">방 만들기</button>
-                <div class="divider">또는</div>
+                <div class="divider">또는 코드로 입장</div>
                 <div class="row">
                     <input id="joinRoomCode" type="text" placeholder="방 코드 입력"/>
                     <button id="btnRoomJoin">입장</button>
@@ -113,13 +154,13 @@
                 <p id="battleMsg" class="msg"></p>
             </div>
 
-            <div id="battleRoom" class="hidden">
+            <div id="battleRoom" class="card hidden">
                 <div class="topbar">
                     <div class="roomInfo">
-                        방 코드: <b id="roomCode"></b>
+                        방 코드 <b id="roomCode"></b>
                         <button id="btnCopyCode" class="tiny">복사</button>
-                        <span id="roundInfo" class="roundInfo"></span>
                     </div>
+                    <span id="roundInfo" class="roundInfo"></span>
                     <div id="battleTimer" class="timer">--</div>
                 </div>
 
@@ -139,10 +180,14 @@
 
                 <div id="battleStatus" class="status">상대 플레이어를 기다리는 중…</div>
 
-                <div id="battleBoardWrap" class="boardWrap">
-                    <div id="battleBoard" class="board"></div>
-                    <div id="battleSelBox" class="selBox hidden"></div>
+                <div class="crate">
+                    <div id="battleBoardWrap" class="boardWrap">
+                        <div id="battleBoard" class="board"></div>
+                        <div id="battleSelBox" class="selBox hidden"></div>
+                    </div>
                 </div>
+
+                <p class="rotateHint">폰을 가로로 돌리면 사과가 더 크게 보여요.</p>
 
                 <div class="row center">
                     <button id="btnRematch" class="primary hidden">다음 판 준비 완료</button>
@@ -154,7 +199,7 @@
         <!-- ===== 랭킹 탭 ===== -->
         <section id="tab-ranking" class="card tabPanel hidden">
             <div class="panelHead">
-                <h2>랭킹</h2>
+                <h2>솔로 랭킹</h2>
                 <div class="segmented">
                     <button class="seg active" data-period="alltime" type="button">전체</button>
                     <button class="seg" data-period="weekly" type="button">주간</button>

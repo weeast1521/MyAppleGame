@@ -39,7 +39,8 @@ function createBoard({ wrapEl, boardEl, selBoxEl, onSelect }) {
     }
 
     function render() {
-        boardEl.style.gridTemplateColumns = `repeat(${cols}, 34px)`;
+        // 셀 폭은 CSS가 정한다(컨테이너 폭에 맞춰 줄어듦) — 좌표 계산은 metrics()가 DOM을 실측하므로 영향 없다
+        boardEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
         boardEl.innerHTML = '';
         cellEls = [];
         for (let r = 0; r < rows; r++) {
@@ -169,7 +170,9 @@ function createBoard({ wrapEl, boardEl, selBoxEl, onSelect }) {
         selBoxEl.style.top = (a.top - wrap.top) + 'px';
         selBoxEl.style.width = (b.right - a.left) + 'px';
         selBoxEl.style.height = (b.bottom - a.top) + 'px';
-        selBoxEl.style.borderColor = sum === 10 ? '#22c55e' : '#64748b';
+        // 색은 CSS(.selBox.ok)가, 합계 표시는 ::after가 data-sum으로 그린다
+        selBoxEl.classList.toggle('ok', sum === 10);
+        selBoxEl.dataset.sum = sum;
     }
 
     return { setBoard, clear, removeCells, setActive, isEmpty };
