@@ -57,9 +57,7 @@ class SoloActiveSessionTest {
     @AfterEach
     void tearDown() {
         stringRedisTemplate.delete("solo:user:" + user.getId());
-        soloRecordRepository.deleteAll(soloRecordRepository.findAll().stream()
-                .filter(r -> r.getUser().getId().equals(user.getId()))
-                .toList());
+        soloRecordRepository.deleteAll(soloRecordRepository.findAllByUserId(user.getId()));
         userRepository.delete(user);
     }
 

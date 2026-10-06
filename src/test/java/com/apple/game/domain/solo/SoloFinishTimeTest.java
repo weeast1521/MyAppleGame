@@ -58,9 +58,7 @@ class SoloFinishTimeTest {
 
     @AfterEach
     void tearDown() {
-        soloRecordRepository.deleteAll(soloRecordRepository.findAll().stream()
-                .filter(r -> r.getUser().getId().equals(user.getId()))
-                .toList());
+        soloRecordRepository.deleteAll(soloRecordRepository.findAllByUserId(user.getId()));
         userRepository.delete(user);
     }
 

@@ -16,6 +16,9 @@ public interface SoloRecordRepository extends JpaRepository<SoloRecord, Long> {
 
     Optional<SoloRecord> findTopByUserIdOrderByScoreDesc(Long userId);
 
+    // 테스트 정리용 — 한 유저의 기록만. findAll() 로 전체를 읽고 거르면 로컬 더미 200만 건(Step 14)에서 OOM 이 난다
+    List<SoloRecord> findAllByUserId(Long userId);
+
     // r.user.id는 SoloRecord 안에 이미 userId가 존재하기에 join이 필요 없다. 대신 nickname 같은 값이 필요하면 join이 필
     @Query("SELECT COUNT(DISTINCT r.user.id) FROM SoloRecord r WHERE r.score > :score")
     long countUsersWithScoreAbove(@Param("score") int score);
