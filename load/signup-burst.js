@@ -20,6 +20,7 @@ const MODE = __ENV.MODE || 'unique';
 
 const created = new Counter('signup_201');
 const conflict = new Counter('signup_409');
+const limited = new Counter('signup_429'); // nginx limit_req 거절 (#58) — 앱에 도달하지 않으므로 앱 지표엔 없다
 const serverError = new Counter('signup_5xx');
 
 export const options = {
@@ -71,10 +72,13 @@ export default function (data) {
 
     if (res.status === 201) created.add(1);
     else if (res.status === 409) conflict.add(1);
+    else if (res.status === 429) limited.add(1);
     else if (res.status >= 500) serverError.add(1);
 
     check(res, {
         'no 5xx': (r) => r.status < 500,
-        'unique → 201': (r) => MODE === 'dup' || r.status === 201,
+        // nginx 를 거치면(BASE=https://fruitboxduel.com) 한 IP 에서 쏘는 k6 는 대부분 429 를 받는 것이 정상이다 (#58).
+        // 앱의 BCrypt 상한(S3)을 다시 재려면 nginx 를 우회해 앱 포트로 직접 보낸다.
+        'unique → 201 or 429': (r) => MODE === 'dup' || r.status === 201 || r.status === 429,
     });
 }

@@ -95,6 +95,12 @@ async function apiFetch(path, { method = 'GET', body, auth = true, _retried = fa
         throw new ApiError('AUTH401_3', '로그인이 만료되었습니다. 다시 로그인해주세요.', 401);
     }
 
+    // nginx가 빈도 제한으로 돌려보낸 429 — 본문이 HTML이라 CustomResponse 해석이 안 된다 (#58).
+    // 앱에는 도달하지 않았으므로 재시도하면 통과할 수 있다는 점에서 다른 4xx와 다르다.
+    if (res.status === 429) {
+        throw new ApiError('HTTP429', '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.', 429);
+    }
+
     let payload = null;
     try { payload = await res.json(); } catch { /* 본문 없는 응답 */ }
 
@@ -142,8 +148,9 @@ async function reissueOnce() {
     } catch {
         return 'NETWORK';
     }
-    // 배포 전환 중 nginx가 502/503을 줄 수 있다 — 서버가 refresh를 판단한 응답이 아니다
-    if (res.status >= 500) return 'NETWORK';
+    // 배포 전환 중 nginx가 502/503을 줄 수 있고, 빈도 제한이면 429다(#58) — 둘 다 서버가 refresh를
+    // 판단한 응답이 아니다. REJECTED로 보면 멀쩡한 refresh를 버리고 로그아웃시킨다.
+    if (res.status >= 500 || res.status === 429) return 'NETWORK';
 
     let payload = null;
     try { payload = await res.json(); } catch { /* 본문 없음 */ }

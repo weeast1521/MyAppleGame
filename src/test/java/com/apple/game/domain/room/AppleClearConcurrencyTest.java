@@ -166,9 +166,23 @@ class AppleClearConcurrencyTest {
     void requestId_markedOnce() {
         String requestId = UUID.randomUUID().toString();
 
-        assertThat(roomRedisRepository.markRequestOnce(roomCode, requestId)).isTrue();
-        assertThat(roomRedisRepository.markRequestOnce(roomCode, requestId)).isFalse();
+        assertThat(roomRedisRepository.markRequestOnce(roomCode, HOST_ID, requestId)).isEqualTo(RoomRedisRepository.MarkResult.OK);
+        assertThat(roomRedisRepository.markRequestOnce(roomCode, HOST_ID, requestId)).isEqualTo(RoomRedisRepository.MarkResult.DUPLICATE);
         assertThat(redisTemplate.getExpire(RoomRedisRepository.reqsKey(roomCode))).isPositive(); // TTL이 걸려 있다
+    }
+
+    @Test
+    @DisplayName("멤버가 아니거나 없는 방이면 requestId 표시를 거절하고 reqs 키를 만들지 않는다 (#58)")
+    void requestId_notMember_createsNoKey() {
+        String requestId = UUID.randomUUID().toString();
+
+        // 존재하는 방, 멤버 아님
+        assertThat(roomRedisRepository.markRequestOnce(roomCode, 999_999L, requestId)).isEqualTo(RoomRedisRepository.MarkResult.NOT_MEMBER);
+        assertThat(redisTemplate.hasKey(RoomRedisRepository.reqsKey(roomCode))).isFalse();
+
+        // 존재하지 않는 방 코드 — 수정 전에는 여기서 room:NOROOM:reqs 가 생겼다(코드만 바꾸면 무한 생성)
+        assertThat(roomRedisRepository.markRequestOnce("NOROOM", HOST_ID, requestId)).isEqualTo(RoomRedisRepository.MarkResult.NOT_MEMBER);
+        assertThat(redisTemplate.hasKey(RoomRedisRepository.reqsKey("NOROOM"))).isFalse();
     }
 
     // ───────────────────────── helpers ─────────────────────────

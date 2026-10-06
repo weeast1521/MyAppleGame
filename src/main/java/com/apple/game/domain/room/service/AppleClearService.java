@@ -58,11 +58,20 @@ public class AppleClearService {
             return;
         }
 
-        // ② 멱등 — 재전송된 같은 requestId는 두 번째부터 버린다.
+        // ② 멤버 확인 + 멱등 — 멤버가 아니면(없는 방 포함) 아무 키도 만들지 않고 거절하고(#58),
+        //    재전송된 같은 requestId는 두 번째부터 버린다.
         //    (Executor 호출 전에 표시하므로, 표시 직후 Redis가 죽어 실패하면 그 requestId는 재시도해도 무시된다 — 허용 가능한 트레이드오프)
-        if (!roomRedisRepository.markRequestOnce(roomCode, request.requestId())) {
-            log.debug("중복 clear 요청 무시: roomCode={}, userId={}, requestId={}", roomCode, userId, request.requestId());
-            return;
+        switch (roomRedisRepository.markRequestOnce(roomCode, userId, request.requestId())) {
+            case NOT_MEMBER -> {
+                log.debug("멤버가 아닌 clear 요청 거절: roomCode={}, userId={}", roomCode, userId);
+                reject(userId, request.requestId(), ClearOutcome.Status.NOT_MEMBER.name());
+                return;
+            }
+            case DUPLICATE -> {
+                log.debug("중복 clear 요청 무시: roomCode={}, userId={}, requestId={}", roomCode, userId, request.requestId());
+                return;
+            }
+            case OK -> {}
         }
 
         // ③ 원자 실행
