@@ -7,12 +7,12 @@ public class UserResDTO {
 
     public record UserInfo(
             Long userId,
-            String email,
+            String loginId,
             String nickname,
             Provider provider
     ) {
         public static UserInfo from(User user) {
-            return new UserInfo(user.getId(), user.getEmail(), user.getNickname(), user.getProvider());
+            return new UserInfo(user.getId(), user.getLoginId(), user.getNickname(), user.getProvider());
         }
     }
 }

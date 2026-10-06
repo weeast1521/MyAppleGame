@@ -23,7 +23,7 @@ public class UserController {
     private final UserService userService;
 
     @Operation(summary = "내 정보 조회",
-            description = "AccessToken으로 인증된 사용자 본인의 정보(userId, email, nickname, provider)를 조회한다.")
+            description = "AccessToken으로 인증된 사용자 본인의 정보(userId, loginId, nickname, provider)를 조회한다.")
     @GetMapping("/me")
     public ResponseEntity<CustomResponse<UserResDTO.UserInfo>> myInfo(
             @AuthenticationPrincipal CustomUserDetails userDetails

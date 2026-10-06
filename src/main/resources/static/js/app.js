@@ -53,7 +53,7 @@ function bindAuth() {
             const r = await apiFetch('/api/auth/login', {
                 method: 'POST',
                 auth: false,
-                body: { email: $('loginEmail').value.trim(), password: $('loginPassword').value },
+                body: { loginId: $('loginId').value.trim(), password: $('loginPassword').value },
             });
             Auth.saveTokens(r);
             Auth.saveUser(r.user);
@@ -71,14 +71,14 @@ function bindAuth() {
                 method: 'POST',
                 auth: false,
                 body: {
-                    email: $('signupEmail').value.trim(),
+                    loginId: $('signupId').value.trim(),
                     password: $('signupPassword').value,
                     nickname: $('signupNickname').value.trim(),
                 },
             });
-            // 가입 성공 → 로그인 폼으로 전환 + 이메일 미리 채움
+            // 가입 성공 → 로그인 폼으로 전환 + 아이디 미리 채움
             $('authSwitchBtn').click();
-            $('loginEmail').value = r?.email ?? $('signupEmail').value.trim();
+            $('loginId').value = r?.loginId ?? $('signupId').value.trim();
             authError('가입 완료! 로그인해주세요.');
         } catch (err) {
             authError(err.message);
@@ -256,7 +256,7 @@ const Profile = {
             Auth.saveUser({ ...Auth.user, ...me });
             $('headerNickname').textContent = me.nickname;
             $('profileInfo').innerHTML = `
-                <dt>이메일</dt><dd>${escapeHtml(me.email ?? '-')}</dd>
+                <dt>아이디</dt><dd>${escapeHtml(me.loginId ?? '-')}</dd>
                 <dt>닉네임</dt><dd>${escapeHtml(me.nickname)}</dd>`;
         } catch (e) {
             $('profileInfo').innerHTML = '';

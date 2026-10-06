@@ -52,15 +52,15 @@ class SoloRecordDummyGenerator {
     private void wipe() {
         Long before = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM solo_record", Long.class);
         jdbcTemplate.execute("TRUNCATE TABLE solo_record");
-        // 재실행 대비: 이전에 만든 더미 유저도 정리 (실계정 email과 겹치지 않는 패턴)
-        jdbcTemplate.update("DELETE FROM users WHERE email LIKE 'dummy%@test.com'");
+        // 재실행 대비: 이전에 만든 더미 유저도 정리 (실계정 login_id와 겹치지 않는 패턴)
+        jdbcTemplate.update("DELETE FROM users WHERE login_id LIKE 'dummy%@test.com'");
         System.out.printf("기존 solo_record %d건 삭제%n", before);
     }
 
     private List<Long> insertDummyUsers() {
         long start = System.currentTimeMillis();
         String sql = "INSERT INTO users "
-                + "(provider, provider_id, email, password, nickname, role, version, created_at, updated_at) "
+                + "(provider, provider_id, login_id, password, nickname, role, version, created_at, updated_at) "
                 + "VALUES ('LOCAL', NULL, ?, NULL, ?, 'USER', 0, NOW(), NOW())";
 
         List<Object[]> batch = new ArrayList<>(BATCH_SIZE);
@@ -76,7 +76,7 @@ class SoloRecordDummyGenerator {
         }
 
         List<Long> ids = jdbcTemplate.queryForList(
-                "SELECT id FROM users WHERE email LIKE 'dummy%@test.com'", Long.class);
+                "SELECT id FROM users WHERE login_id LIKE 'dummy%@test.com'", Long.class);
         System.out.printf("더미 유저 %d명 삽입 (%.1f초)%n", ids.size(), (System.currentTimeMillis() - start) / 1000.0);
         return ids;
     }

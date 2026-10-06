@@ -36,6 +36,6 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public String getUsername() {
-        return String.valueOf(userId);   // 식별자는 email 이 아니라 userId 로 통일
+        return String.valueOf(userId);   // 식별자는 loginId 가 아니라 userId 로 통일
     }
 }

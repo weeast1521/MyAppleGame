@@ -9,8 +9,8 @@
 //   k6 run -e MODE=unique load/signup-burst.js
 //   k6 run -e MODE=dup    load/signup-burst.js
 //
-// 정리: 가입된 더미는 이메일이 lt-*@load.test 이므로
-//   DELETE FROM users WHERE email LIKE 'lt-%@load.test';
+// 정리: 가입된 더미는 아이디가 lt* 이므로
+//   DELETE FROM users WHERE login_id LIKE 'lt%';
 import http from 'k6/http';
 import { check } from 'k6';
 import { Counter } from 'k6/metrics';
@@ -59,10 +59,11 @@ export function setup() {
 }
 
 export default function (data) {
-    // unique: 닉네임은 12자 제한 — 4(run) + VU(≤3) + 'x' + ITER(≤4) = 12자 이내로 유지
+    // unique: 닉네임은 12자 제한 — 4(run) + VU(≤3) + 'x' + ITER(≤4) = 12자 이내로 유지.
+    // 아이디는 [a-z0-9_]{4,20} — 'lt' + 같은 suffix(소문자·숫자)로 규칙 안에 든다
     const suffix = MODE === 'dup' ? data.runId : `${data.runId}${__VU}x${__ITER}`;
     const body = JSON.stringify({
-        email: `lt-${suffix}@load.test`,
+        loginId: `lt${suffix}`,
         password: 'LoadTest1!',
         nickname: `lt${suffix}`,
     });

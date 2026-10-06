@@ -38,10 +38,13 @@
 | Method / URL | `POST /api/auth/signup` |
 | 인증 | 불필요 |
 
+> 이메일은 받지 않는다(#59 A안, V4). 로그인 식별자는 사용자가 정하는 **아이디**이고, 비밀번호 분실 시 복구 수단은 없다(가입 폼에 안내).
+> 전환 전에 가입한 계정은 기존 이메일 문자열이 그대로 아이디다 — 로그인은 아이디 형식을 검사하지 않는다.
+
 **Request**
 ```json
 {
-  "email": "user@example.com",
+  "loginId": "apple_king",
   "password": "P@ssw0rd!",
   "nickname": "사과왕"
 }
@@ -49,14 +52,14 @@
 
 **Response `result`**
 ```json
-{ "userId": 1, "email": "user@example.com", "nickname": "사과왕" }
+{ "userId": 1, "loginId": "apple_king", "nickname": "사과왕" }
 ```
 
 | 에러 코드 | 상황 |
 |---|---|
-| `AUTH409` | 이미 가입된 이메일 |
+| `AUTH409` | 이미 사용 중인 아이디 |
 | `USER409` | 닉네임 중복 |
-| `AUTH400` | 비밀번호 형식 오류 (8자 이상 64자 이하, 영문+숫자+특수문자) · 이메일 254자 초과 · 닉네임 2~12자 위반 |
+| `AUTH400` | 아이디 형식 오류 (영문 소문자·숫자·밑줄 4~20자) · 비밀번호 형식 오류 (8자 이상 64자 이하, 영문+숫자+특수문자) · 닉네임 2~12자 위반 |
 
 ### 1-2. 일반 로그인
 | 항목 | 내용 |
@@ -66,7 +69,7 @@
 
 **Request**
 ```json
-{ "email": "user@example.com", "password": "P@ssw0rd!" }
+{ "loginId": "apple_king", "password": "P@ssw0rd!" }
 ```
 
 **Response `result`**
@@ -80,8 +83,8 @@
 
 | 에러 코드 | 상황 |
 |---|---|
-| `AUTH401_1` | 이메일 또는 비밀번호 불일치 |
-| `AUTH409_1` | 소셜 계정으로 가입된 이메일 (해당 소셜 로그인 유도) |
+| `AUTH401_1` | 아이디 또는 비밀번호 불일치 (어느 쪽이 틀렸는지 구분하지 않는다 — 계정 존재 여부 노출 방지) |
+| `AUTH409_1` | 소셜 계정으로 가입된 아이디 (해당 소셜 로그인 유도 — 현재 소셜 미사용) |
 
 ### 1-3. 카카오 로그인 (인가코드 전달)
 | 항목 | 내용 |
@@ -172,9 +175,9 @@
 ```json
 {
   "userId": 1,
-  "email": "user@example.com",
+  "loginId": "apple_king",
   "nickname": "사과왕",
-  "provider": "google"
+  "provider": "LOCAL"
 }
 ```
 
