@@ -20,7 +20,7 @@ erDiagram
         bigint id PK
         varchar provider "LOCAL / KAKAO / NAVER"
         varchar provider_id "소셜 제공자 내 식별자 (LOCAL이면 NULL)"
-        varchar email "UNIQUE, 소셜 미동의 시 NULL 가능 (LOCAL은 애플리케이션에서 필수 강제)"
+        varchar login_id "UNIQUE. 로그인 아이디 — V4(#59)에서 email을 개명, 이메일은 수집하지 않음. 소셜이면 NULL 가능"
         varchar password "BCrypt 해시 (LOCAL 전용, 소셜이면 NULL)"
         varchar nickname "UNIQUE"
         varchar role "USER / ADMIN"
@@ -73,7 +73,7 @@ erDiagram
 
 #### `users`
 - 일반 회원가입(`LOCAL`)과 소셜 로그인(`KAKAO`, `NAVER`) 사용자를 한 테이블로 관리.
-  - `LOCAL`: `email` + `password`(BCrypt)로 로그인, `provider_id`는 NULL.
+  - `LOCAL`: `login_id` + `password`(BCrypt)로 로그인, `provider_id`는 NULL. `login_id`는 원래 `email`이었다(V4, #59) — 이메일을 받지 않기로 하면서 개명했고, 전환 전 가입자는 이메일 문자열이 그대로 아이디다.
   - `KAKAO`/`NAVER`: `(provider, provider_id)` 복합 UNIQUE로 식별, `password`는 NULL.
 - `version` 컬럼: 결과 정산 등 동시 수정 상황에서 **낙관적 락** 실습용.
 
