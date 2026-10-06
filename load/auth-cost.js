@@ -3,7 +3,7 @@
 //
 // 실행 (로컬 앱 8080 기동 후):
 //   TOKEN=$(curl -s -X POST localhost:8080/api/auth/login -H 'Content-Type: application/json' \
-//          -d '{"email":"...","password":"..."}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["accessToken"])')
+//          -d '{"loginId":"...","password":"..."}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["result"]["accessToken"])')
 //   k6 run -e MODE=anon load/auth-cost.js
 //   k6 run -e MODE=auth -e TOKEN=$TOKEN load/auth-cost.js
 import http from 'k6/http';

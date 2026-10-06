@@ -104,14 +104,14 @@ function rectanglesSummingTo10(board) {
 }
 
 // ---------- setup: 유저·방 준비 (REST) ----------
-function auth(email, nickname) {
+function auth(loginId, nickname) {
     const headers = { 'Content-Type': 'application/json' };
     const signup = http.post(`${BASE}/api/auth/signup`,
-        JSON.stringify({ email, password: 'LoadTest1!', nickname }), { headers });
-    if (signup.status !== 201 && signup.status !== 409) fail(`signup ${email} → ${signup.status} ${signup.body}`);
+        JSON.stringify({ loginId, password: 'LoadTest1!', nickname }), { headers });
+    if (signup.status !== 201 && signup.status !== 409) fail(`signup ${loginId} → ${signup.status} ${signup.body}`);
     const login = http.post(`${BASE}/api/auth/login`,
-        JSON.stringify({ email, password: 'LoadTest1!' }), { headers });
-    if (login.status !== 200) fail(`login ${email} → ${login.status} ${login.body}`);
+        JSON.stringify({ loginId, password: 'LoadTest1!' }), { headers });
+    if (login.status !== 200) fail(`login ${loginId} → ${login.status} ${login.body}`);
     return { token: login.json('result.accessToken'), userId: login.json('result.user.userId') };
 }
 
@@ -119,8 +119,8 @@ export function setup() {
     const rooms = [];
     for (let i = 0; i < ROOMS; i++) {
         // 유저는 재실행에도 재사용(409 허용). 방은 매번 새로 만든다.
-        const host = auth(`lt-cb-h${i}@load.test`, `ltcbh${i}`);
-        const guest = auth(`lt-cb-g${i}@load.test`, `ltcbg${i}`);
+        const host = auth(`ltcbh${i}`, `ltcbh${i}`);
+        const guest = auth(`ltcbg${i}`, `ltcbg${i}`);
         const create = http.post(`${BASE}/api/rooms`, null,
             { headers: { Authorization: `Bearer ${host.token}` } });
         if (create.status !== 201) fail(`room create → ${create.status} ${create.body}`);
