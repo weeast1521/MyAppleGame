@@ -166,7 +166,11 @@ public class SoloGameService {
             log.warn("랭킹 캐시 갱신 실패 — warm-up 시 복구됨", e);
         }
 
-        int allTimeRank = (int) soloRecordRepository.countUsersWithScoreAbove(score) + 1;
+        // 순위는 '이번 판 점수'가 아니라 '내 최고점' 기준 — 랭킹은 유저당 최고점 한 줄이다.
+        // 이번 점수로 세면 최고점을 못 넘긴 판에서 내 예전 최고 기록이 '나보다 위'로 집계되어
+        // 순위가 실제보다 밀리고, 랭킹 탭·summary의 순위와 어긋난다.
+        int bestScore = Math.max(score, previousBest);
+        int allTimeRank = (int) soloRecordRepository.countUsersWithScoreAbove(bestScore) + 1;
 
         return new SoloResDTO.Finish(record.getId(), score, isPersonalBest, allTimeRank);
     }
