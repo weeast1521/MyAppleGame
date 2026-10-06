@@ -139,6 +139,30 @@ Step 10의 `AppleClearConcurrencyTest`(스레드 2개)가 증명한 것이 STOMP
 
 ---
 
+## S5. 가입 폭주 — nginx `limit_req` 전/후 (10-06, #58)
+
+**시나리오** — S3와 같은 `load/signup-burst.js` unique 모드(0→20→50 VU 램프, 50초, VU마다 고유 이메일)를 두 경로로.
+로컬 nginx 컨테이너에 운영과 같은 `ratelimit.conf` + auth location(`10r/m`, `burst=10 nodelay`)만 떼어 호스트 앱으로 프록시했다.
+k6는 한 IP에서 쏘므로 "IP 하나가 할 수 있는 최대치"를 재는 셈이다.
+
+| 항목 | 앱 직접 (before) | nginx 경유 (after) |
+|---|---|---|
+| 요청 수 (50초) | 4,849 | **1,293,012** |
+| 201 (BCrypt가 실제로 돈 횟수) | 4,849 | **12** |
+| 429 | 0 | 1,292,993 |
+| 처리량 | 97 req/s | 25,859 req/s |
+| avg / p95 / p99 / max | 287 ms / 484 ms / 786 ms / 1.55 s | **1.0 ms** / 1.7 ms / 2.3 ms / 169 ms |
+
+읽는 법:
+- before의 97 req/s는 이 노트북 BCrypt 상한이다(S3의 VM 2 vCPU는 50 req/s). 50초 동안 **4,849번** 해시를 돌렸다 — 한 IP가 이만큼 CPU를 쓰게 할 수 있었다.
+- after는 같은 50초에 해시가 **12번** 돌았다(burst 10 + 분당 10회의 누적분). 나머지 129만 건은 nginx가 1ms에 돌려보냈고 앱은 그것들을 본 적이 없다. 처리량이 270배 커진 것은 "거절이 그만큼 싸다"는 뜻이지 앱이 빨라진 게 아니다.
+- 실패한 체크 7건(1.29M 중)은 201도 429도 아닌 응답 — 램프 초입에 k6 VU가 겹치며 닉네임 12자 제한에 걸린 400으로 추정, 수치에 영향 없음.
+- nginx error.log에 `limiting requests, excess: 10.880 by zone "auth"`가 429 건수만큼 찍힌다(`limit_req_log_level warn`). **앱 지표에는 아무것도 남지 않는다** — 거절량은 nginx 로그로만 센다.
+
+**판단** — S3에서 "규모가 커지면 레버는 rate limit"이라고 적어둔 그 레버를 당겼다. BCrypt strength는 그대로다(보안 예산을 깎지 않았다). 운영 수치·근거·검증 절차는 INFRA.md §11.
+
+---
+
 ## 함께 넣은 것 — p6spy
 
 `com.github.gavlyukovskiy:p6spy-spring-boot-starter`. 로그 한 줄에 `실행시간 ms | 종류 | 바인딩된 SQL`.
@@ -148,6 +172,6 @@ prod는 `decorator.datasource.enabled=false`로 프록시 자체를 뺀다. 이 
 ## 남긴 것
 
 - 랭킹 대기자 폴링(최대 5초)은 집계가 커지면 stale-while-revalidate로 교체
-- 가입 rate limit — 부하 자체보다 봇 가입 방지가 이유가 될 때
+- ~~가입 rate limit~~ → S5(#58)에서 적용. 봇 가입 자체는 IP 제한으로 느려질 뿐 막히지 않는다 — 이메일 인증·CAPTCHA는 #59의 결정에 달림
 - Redis 다운 시나리오(랭킹·방 상태 전부 Redis) — `timeout: 3s`가 요청을 얼마나 빨리 실패시키는지 미측정
 - 여기 숫자는 노트북 1대 기준. VM(INFRA.md 예산)에서 다시 재면 절대치는 다르다 — 비율만 옮겨 볼 것

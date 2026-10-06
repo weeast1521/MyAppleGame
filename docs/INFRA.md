@@ -360,3 +360,60 @@ DNS 레코드 추가·전파 확인 → 인증서 발급 + `renew --dry-run` →
 | ③ | 게임은 시작되는데 사과 제거 무반응 | `crypto.randomUUID()`는 보안 컨텍스트(HTTPS·localhost) 전용 — http+IP에서 undefined → TypeError로 전송 자체가 안 됨 | `getRandomValues` 기반 UUID v4 폴백 `genRequestId()` (PR #24) |
 
 교훈: 로컬에서 멀쩡한데 실서버에서만 고장 나면 **호스트명 규칙 → 프록시 헤더 전달 → 보안 컨텍스트** 순으로 의심한다. 진단은 nginx 접근 로그(어떤 요청이 몇 번으로 실패)와 서버 상태 저장소(Redis 키 — "도착했다면 반드시 남았을 흔적")가 결정적이었다.
+
+---
+
+## 11. 요청 빈도 제한 (10-06, #58)
+
+출시 준비도 점검(09-21)에서 "요청 빈도를 제한하는 장치가 어디에도 없다"가 공개 전 필수로 판정됐다.
+① 로그인 무차별 대입 무제한 ② BCrypt(요청당 CPU 60~100ms, 2 vCPU)가 인증 없이 호출되는 DoS 경로
+③ 한 계정이 방을 무한정 만들어 `noeviction` Redis(1GB)를 채우면 **전 사용자의 쓰기가 실패**.
+
+### 계층마다 막는 대상이 다르다 — 하나로는 안 된다
+
+| 계층 | 식별 | 막는 것 | 못 막는 것 |
+|---|---|---|---|
+| nginx `limit_req` | IP | 익명 폭주(①②). **앱에 닿기 전에** 거절하므로 BCrypt를 아예 안 돌린다 | NAT 뒤 다수 사용자를 한 명으로 본다 · IP를 바꾸는 공격자 |
+| 도메인 불변식 (앱) | userId | "한 사람은 방 하나"(③) — 빈도가 아니라 **총량**을 묶는다. 천천히 만들어도 못 쌓는다 | 빈도 |
+| 요청 크기 상한 (DTO) | 요청 1건 | 비밀번호 64자·이메일 254자·moves 85개 — 요청 1건이 쓸 수 있는 CPU의 상한 | 건수 |
+
+②의 핵심은 **비싼 연산 앞에서 막아야 한다**는 것이다. 앱에서 BCrypt 뒤에 세면 이미 CPU를 썼다. 그래서 인증 엔드포인트는 nginx가 1차다.
+
+### nginx 수치와 근거
+
+| zone | 적용 location | rate | burst | 근거 |
+|---|---|---|---|---|
+| `auth` | `= /api/auth/login` · `signup` · `reissue` | IP당 **10r/m** | 10, `nodelay` | 사람이 비밀번호를 틀려도 분당 10회를 넘기기 어렵다. 대입 공격은 IP당 분당 10회로 무의미. BCrypt 상한이 ~50 req/s(load_test.md S3)이므로 IP 하나가 쓸 수 있는 CPU는 0.3% |
+| `api` | `location /` (REST + 정적 파일) | IP당 **20r/s** | 40, `nodelay` | 정상 플레이는 초당 몇 건. 첫 로드의 정적 파일 묶음(10개 안팎)은 burst로 흡수. **사과 제거는 WebSocket(`/ws`)이라 무관** — `/ws`·`/grafana/`에는 걸지 않는다 |
+
+- `nodelay`: burst까지 즉시 통과, 초과분은 **거절**(없으면 큐에 넣어 지연 — 로그인에서 지연은 "먹통"으로 보인다).
+- 거절 코드는 기본 503 대신 **429** (`limit_req_status`). 503은 배포 전환 중 일시 장애와 구분이 안 된다. 프론트 `api.js`는 429를 "요청이 너무 많습니다. 잠시 후 다시 시도해주세요"로 띄우고, 재발급의 429는 `NETWORK`로 분류해 **로그아웃시키지 않는다**(멀쩡한 refresh를 버리지 않기 위해).
+- 키는 `$binary_remote_addr`. Cloudflare는 DNS only라 `remote_addr`이 실제 클라이언트 IP다. 적용 전 VM의 nginx 접근 로그로 IP가 Docker 게이트웨이(172.x)로 뭉개지지 않고 공인 IP별로 찍히는 것을 확인했다 — 뭉개졌다면 "IP당"이 "전체"가 되어 서비스 전체가 분당 10회가 된다.
+- zone 정의(`limit_req_zone`)는 http 컨텍스트 전용이라 `nginx/ratelimit.conf`에 따로 두었다(`conf.d/*.conf`는 자동 include). 적용(`limit_req`)은 `default.conf`의 location. location에 `proxy_set_header`를 쓰지 않았으므로 server 블록의 공통 헤더가 상속된다(§10 ② 교훈).
+
+### 반영 경로와 검증
+
+- **배포로 반영된다**(§9-1 예외 항목): 머지 → 워크플로 `git pull` → `deploy.sh`의 `nginx -s reload`가 새 `.conf`를 읽는다. 수동 작업 없음. 문법 오류면 reload가 실패해 전환 직전에 멈춘다(기존 색이 계속 서빙). 로컬에서 `nginx -t`로 선검증:
+  ```bash
+  docker run --rm --add-host grafana:127.0.0.1 -v $PWD/nginx:/etc/nginx/conf.d:ro -v <더미 인증서>:/etc/letsencrypt:ro nginx:1.27-alpine nginx -t
+  ```
+- 배포 후 확인:
+  ```bash
+  for i in $(seq 1 12); do curl -s -o /dev/null -w "%{http_code} " -X POST https://fruitboxduel.com/api/auth/login -H 'Content-Type: application/json' -d '{"email":"x@x.com","password":"wrong1!xx"}'; done; echo
+  # 기대: 401 ×10 → 429 ×2 (burst 10 소진 후 거절)
+  docker compose -f docker-compose.prod.yml logs --no-log-prefix nginx | awk '{print $9}' | sort | uniq -c   # 상태코드 집계
+  ```
+- **429는 앱 지표(Prometheus/Grafana)에 안 잡힌다** — 앱에 도달하지 않았으므로. 거절량은 nginx access.log(상태코드)와 error.log(`limiting requests`, warn)로 센다. Phase 3에서 nginx exporter를 붙이면 그때 대시보드에 올린다.
+- **부하 테스트 주의**: k6는 한 IP에서 쏘므로 nginx를 거치면 대부분 429다. 앱의 상한(S3)을 다시 재려면 VM 안에서 앱 포트로 직접(`BASE=http://app-blue:8080`) 보낸다. `load/signup-burst.js`는 429를 별도로 센다.
+
+### 결정 — 계정 단위 실패 카운터는 넣지 않는다
+
+"이메일당 실패 5회 → 10분 잠금"은 **공격자가 남의 이메일로 5번 틀려 그 사람을 잠글 수 있다** — 잠금 자체가 DoS 수단이 된다.
+완화책(지연만 늘리기 / IP+이메일 조합 / CAPTCHA)은 전부 복잡도를 더하는데, 지금 지킬 자산은 게임 기록뿐이다.
+IP 제한만으로 ① 무차별 대입은 IP당 분당 10회로 묶이고 ② BCrypt CPU는 IP당 0.3%로 묶인다. 계정 단위는 "IP를 바꿔가며 한 계정을 노리는" 공격에만 추가 가치가 있고, 그 공격은 이 서비스의 자산 가치에 비해 비용이 크다. 필요해지면 "잠그지 않고 실패마다 응답을 1초씩 늦추는" 방식부터.
+
+### 남긴 것
+
+- Redis 메모리 사용률 알림 — 제한을 넣어도 "차고 있다"는 걸 아는 수단은 별도(Phase 3 Alertmanager, `redis_memory_used_bytes / maxmemory`).
+- nginx 429 집계를 대시보드로 — nginx exporter 또는 access.log 파싱.
+- 가입 폭주(봇 가입)는 IP 제한으로 느려질 뿐 막히지 않는다 — 이메일 인증(#59 B안)이나 CAPTCHA가 답이고, 그건 #59의 결정에 달려 있다.
