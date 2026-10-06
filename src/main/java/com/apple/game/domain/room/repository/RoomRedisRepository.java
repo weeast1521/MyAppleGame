@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -32,6 +33,7 @@ public class RoomRedisRepository {
     public static String sessionKey(String sessionId) { return "ws:session:" + sessionId; } // WS 세션 → (userId, roomCode)
     public static String sessionsKey(String code) { return "room:" + code + ":sessions"; } // userId → 현재 세션 ID (최신 것만)
     public static String discKey(String code) { return "room:" + code + ":disc"; } // userId → 이탈 nonce (유예 중인 사람)
+    public static String userRoomKey(Long userId) { return "user:" + userId + ":room"; } // 유저 → 현재 참여 중인 방 (#58, 유저당 활성 방 1개)
 
     // Lua 스크립트 이용
     // EXISTS room:ABC123, HGET room:ABC123 status, HSET room:ABC123 guestId id
@@ -78,6 +80,58 @@ public class RoomRedisRepository {
             end
             return 'WAIT'
             """, String.class);
+
+    // ---------- #58: 유저당 활성 방 1개 — user:{id}:room 포인터 ----------
+    // 솔로의 solo:user:{id}(#50)와 같은 모양이다. "방이 몇 개인가"가 아니라 "이 유저의 방은 어느 것인가"를
+    // 가리키는 값이 있어야 서버가 총량을 묶을 수 있다. 빈도 제한(nginx)은 천천히 만드는 공격을 못 막는다.
+
+    // 포인터를 새 방으로 교체하고 직전 값을 돌려준다. GET+SET 을 Lua 로 묶는 이유: 같은 유저의 생성 요청이
+    // 동시에 N건 겹쳐도 각자 서로 다른 직전 값을 받아 정확히 하나씩만 정리한다(#50 SWAP_ACTIVE_SCRIPT 와 동일).
+    private static final DefaultRedisScript<String> SWAP_USER_ROOM_SCRIPT = new DefaultRedisScript<>("""
+            local previous = redis.call('GET', KEYS[1])
+            redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+            if previous == false then
+                return ''
+            end
+            return previous
+            """, String.class);
+
+    // 포인터가 '이 방'을 가리킬 때만 값을 바꾼다(compare-and-set). ARGV[2] 가 빈 문자열이면 삭제.
+    // 무조건 SET/DEL 하면, 나가는 사이에 같은 유저가 다른 방을 만든 경우 새 방의 포인터를 덮어쓴다.
+    private static final DefaultRedisScript<Long> CAS_USER_ROOM_SCRIPT = new DefaultRedisScript<>("""
+            if redis.call('GET', KEYS[1]) ~= ARGV[1] then
+                return 0
+            end
+            if ARGV[2] == '' then
+                return redis.call('DEL', KEYS[1])
+            end
+            redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+            return 1
+            """, Long.class);
+
+    /** 포인터를 code 로 교체하고 직전 방 코드를 돌려준다. 없었으면 empty */
+    public Optional<String> swapActiveRoom(Long userId, String code) {
+        String previous = redisTemplate.execute(
+                SWAP_USER_ROOM_SCRIPT,
+                List.of(userRoomKey(userId)),
+                code, String.valueOf(ROOM_TTL.toSeconds()));
+        return (previous == null || previous.isEmpty()) ? Optional.empty() : Optional.of(previous);
+    }
+
+    /** 포인터가 code 를 가리키고 있을 때만 지운다 — 방에서 나갔음을 표시한다 */
+    public void clearActiveRoom(Long userId, String code) {
+        redisTemplate.execute(CAS_USER_ROOM_SCRIPT, List.of(userRoomKey(userId)), code, "", "0");
+    }
+
+    /** 포인터가 expected 일 때만 restore 로 되돌린다 — 새 방 생성을 거절하며 롤백할 때 */
+    public void restoreActiveRoom(Long userId, String expected, String restore) {
+        redisTemplate.execute(CAS_USER_ROOM_SCRIPT, List.of(userRoomKey(userId)),
+                expected, restore, String.valueOf(ROOM_TTL.toSeconds()));
+    }
+
+    public Optional<String> findActiveRoom(Long userId) {
+        return Optional.ofNullable(redisTemplate.opsForValue().get(userRoomKey(userId)));
+    }
 
     // 3차: check + act를 Lua로 원자화 -> 동시 join 시 정확히 한 명만 OK를 받는다
     public String joinAtomic(String code, Long userId) {

@@ -16,6 +16,7 @@ public enum RoomErrorCode implements BaseErrorCode {
     // 409
     ROOM_FULL(HttpStatus.CONFLICT, "ROOM409", "방이 가득 찼습니다."),
     ROOM_PLAYING(HttpStatus.CONFLICT, "ROOM409_1", "이미 게임이 진행 중인 방입니다."),
+    ROOM_ALREADY_IN(HttpStatus.CONFLICT, "ROOM409_2", "참여 중인 방이 있습니다. 먼저 나가주세요."),
 
     // 500
     ROOM_CODE_EXHAUSTED(HttpStatus.INTERNAL_SERVER_ERROR, "ROOM500", "방 코드 생성에 실패했습니다.");
