@@ -63,6 +63,18 @@ function bindAuth() {
         }
     });
 
+    // 비밀번호 확인 — 이메일을 받지 않으므로(#59) 오타로 가입하면 복구 수단이 없다(#74).
+    // 브라우저 네이티브 검증(required·pattern)과 같은 계층에 두려고 setCustomValidity 를 쓴다:
+    // 불일치면 submit 이 막히고 브라우저가 해당 칸을 가리킨다. 서버는 확인값을 받지 않는다.
+    // 두 칸 중 어느 쪽을 고쳐도 상태가 갱신돼야 하므로 양쪽 모두에 건다.
+    const syncPasswordConfirm = () => {
+        const confirm = $('signupPasswordConfirm');
+        const mismatch = confirm.value !== '' && confirm.value !== $('signupPassword').value;
+        confirm.setCustomValidity(mismatch ? '비밀번호가 일치하지 않습니다.' : '');
+    };
+    $('signupPassword').addEventListener('input', syncPasswordConfirm);
+    $('signupPasswordConfirm').addEventListener('input', syncPasswordConfirm);
+
     $('signupForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         authError('');
