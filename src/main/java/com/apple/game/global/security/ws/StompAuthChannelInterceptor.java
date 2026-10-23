@@ -1,5 +1,6 @@
 package com.apple.game.global.security.ws;
 
+import com.apple.game.global.metrics.ActiveUserTracker;
 import com.apple.game.global.security.jwt.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.Message;
@@ -12,6 +13,7 @@ import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.stereotype.Component;
 
+import java.security.Principal;
 import java.util.List;
 
 /**
@@ -28,6 +30,7 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final ActiveUserTracker activeUserTracker;
 
     // channel로 보내기 직전(postSend(보낸 직후), afterSendCompletion(완료 후) 모두 default 구현이라 필요한 것만 구현)
     @Override
@@ -47,7 +50,26 @@ public class StompAuthChannelInterceptor implements ChannelInterceptor {
 
             accessor.setUser(new UsernamePasswordAuthenticationToken(String.valueOf(userId), null, List.of()));
         }
+
+        // 접속자 수 게이지(active_users)의 입력. 대전 중인 사람은 HTTP를 거의 안 보내고 STOMP 프레임만 보내므로
+        // JWT 필터만으로는 5분 창에서 빠져나간다. CONNECT 때 심은 Principal이 이후 프레임마다 붙어 있으니 그 이름(userId)을 쓴다.
+        recordActivity(accessor);
         return message;
+    }
+
+    private void recordActivity(StompHeaderAccessor accessor) {
+        if (accessor == null) {
+            return;
+        }
+        Principal user = accessor.getUser();
+        if (user == null) {
+            return;
+        }
+        try {
+            activeUserTracker.touch(Long.valueOf(user.getName()));
+        } catch (NumberFormatException ignored) {
+            // 이 인터셉터가 심은 Principal은 항상 userId 문자열이다. 다른 형태면 세지 않고 넘어간다 — 지표 때문에 메시지를 막지 않는다.
+        }
     }
 
     private String resolveToken(String header) {

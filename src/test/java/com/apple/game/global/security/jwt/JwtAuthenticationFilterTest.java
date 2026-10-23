@@ -1,6 +1,7 @@
 package com.apple.game.global.security.jwt;
 
 import com.apple.game.domain.user.entity.Role;
+import com.apple.game.global.metrics.ActiveUserTracker;
 import com.apple.game.global.security.CustomUserDetails;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -10,6 +11,8 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -22,7 +25,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class JwtAuthenticationFilterTest {
 
     final JwtTokenProvider provider = JwtTokenProviderTest.provider();
-    final JwtAuthenticationFilter filter = new JwtAuthenticationFilter(provider);
+    final ActiveUserTracker tracker = new ActiveUserTracker();
+    final JwtAuthenticationFilter filter = new JwtAuthenticationFilter(provider, tracker);
 
     @AfterEach
     void clearContext() {
@@ -56,6 +60,17 @@ class JwtAuthenticationFilterTest {
     @DisplayName("refresh 토큰을 Bearer로 보내면 인증되지 않는다 — 예전엔 role DB 폴백을 타고 통과했다")
     void refreshTokenDoesNotAuthenticate() throws Exception {
         assertThat(runWithBearer(provider.createRefreshToken(7L))).isNull();
+    }
+
+    @Test
+    @DisplayName("인증에 성공한 요청만 활성 사용자(active_users)로 기록된다")
+    void authenticatedRequestCountsAsActiveUser() throws Exception {
+        runWithBearer(provider.createRefreshToken(9L));
+        assertThat(tracker.countActiveWithin(Duration.ofMinutes(5))).as("인증 실패는 세지 않는다").isZero();
+
+        runWithBearer(provider.createAccessToken(7L, Role.USER));
+        runWithBearer(provider.createAccessToken(7L, Role.USER));
+        assertThat(tracker.countActiveWithin(Duration.ofMinutes(5))).as("같은 사용자는 한 번만").isEqualTo(1);
     }
 
     @Test

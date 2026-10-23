@@ -32,6 +32,60 @@
     },
     {
       "type": "stat",
+      "id": 23,
+      "title": "활성 사용자 (5분)",
+      "description": "최근 5분 안에 인증된 HTTP 요청이나 STOMP 프레임을 보낸 고유 사용자 수 = 동시 접속자. 솔로·대전·홈 화면 사용자가 모두 한 번씩 잡힌다(ActiveUserTracker). 보드 재시작이 많아도 중복으로 세지 않는다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 4,
+        "h": 4
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(active_users{job=\"app\", window=\"5m\"})",
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "type": "stat",
       "id": 2,
       "title": "앱 인스턴스",
       "description": "1=수집 성공. prod는 blue·green을 둘 다 등록해 두므로 꺼진 색은 0(빨강)이 정상이다.",
@@ -40,9 +94,9 @@
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 0,
+        "x": 4,
         "y": 1,
-        "w": 6,
+        "w": 4,
         "h": 4
       },
       "fieldConfig": {
@@ -91,16 +145,16 @@
     {
       "type": "stat",
       "id": 3,
-      "title": "WebSocket 세션",
-      "description": "지금 열려 있는 STOMP 세션 수(모든 transport 합).",
+      "title": "대전 방 WebSocket 세션",
+      "description": "지금 열려 있는 STOMP 세션 수(모든 transport 합). 프론트는 대전 방에 입장할 때만 WebSocket을 열므로 대전 플레이어만 센다 — 전체 접속자는 왼쪽 \"활성 사용자\" 타일.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 6,
+        "x": 8,
         "y": 1,
-        "w": 6,
+        "w": 5,
         "h": 4
       },
       "fieldConfig": {
@@ -152,9 +206,9 @@
         "uid": "prometheus"
       },
       "gridPos": {
-        "x": 12,
+        "x": 13,
         "y": 1,
-        "w": 6,
+        "w": 5,
         "h": 4
       },
       "fieldConfig": {
@@ -264,12 +318,151 @@
     },
     {
       "type": "row",
+      "id": 24,
+      "title": "접속자 — 누가 얼마나 있나",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "id": 25,
+      "title": "활성 사용자 (1분 / 5분 창)",
+      "description": "고유 userId 기준. 1분 창은 '지금 이 순간'에 가깝고, 5분 창은 솔로 한 판(120초)과 메뉴 이동까지 포함한 '접속 중'이다. 두 선이 벌어지면 짧게 들렀다 나가는 사람이 많다는 뜻. 인스턴스별 인메모리라 blue/green 전환 직후 몇 분은 새 색의 값이 낮게 시작한다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "max(active_users{job=\"app\", window=\"1m\"})",
+          "legendFormat": "1분 창"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "max(active_users{job=\"app\", window=\"5m\"})",
+          "legendFormat": "5분 창"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "id": 26,
+      "title": "솔로 시작 / 제출 (2분 창)",
+      "description": "솔로 게임 시작(POST /api/solo/games, 201)과 제출(finish, 200)의 최근 2분 합. 한 판이 120초라 시작 수가 '솔로 중인 사람'의 상한, 제출 수가 하한이다. 시작:제출이 3:1을 넘게 벌어지면 보드 재시작이 잦거나 보드만 골라 받는 스크립트다. 상태 코드는 2xx 전체로 걸었다 — 시작이 201이라 200만 세면 0이 나온다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "A",
+          "expr": "round(sum(increase(http_server_requests_seconds_count{job=\"app\", uri=\"/api/solo/games\", method=\"POST\", status=~\"2..\"}[2m]))) or vector(0)",
+          "legendFormat": "시작"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "refId": "B",
+          "expr": "round(sum(increase(http_server_requests_seconds_count{job=\"app\", uri=\"/api/solo/games/{gameSessionId}/finish\", method=\"POST\", status=~\"2..\"}[2m]))) or vector(0)",
+          "legendFormat": "제출"
+        }
+      ]
+    },
+    {
+      "type": "row",
       "id": 6,
       "title": "HTTP — 서버가 본 요청",
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 5,
+        "y": 14,
         "w": 24,
         "h": 1
       },
@@ -286,7 +479,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 6,
+        "y": 15,
         "w": 8,
         "h": 8
       },
@@ -339,7 +532,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 6,
+        "y": 15,
         "w": 8,
         "h": 8
       },
@@ -392,7 +585,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 6,
+        "y": 15,
         "w": 8,
         "h": 8
       },
@@ -441,7 +634,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 23,
         "w": 24,
         "h": 1
       },
@@ -458,7 +651,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 15,
+        "y": 24,
         "w": 12,
         "h": 8
       },
@@ -580,7 +773,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 15,
+        "y": 24,
         "w": 12,
         "h": 8
       },
@@ -630,7 +823,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 23,
+        "y": 32,
         "w": 24,
         "h": 1
       },
@@ -647,7 +840,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 33,
         "w": 12,
         "h": 8
       },
@@ -701,7 +894,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 24,
+        "y": 33,
         "w": 12,
         "h": 8
       },
@@ -767,7 +960,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 32,
+        "y": 41,
         "w": 24,
         "h": 1
       },
@@ -784,7 +977,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 33,
+        "y": 42,
         "w": 12,
         "h": 8
       },
@@ -838,7 +1031,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 33,
+        "y": 42,
         "w": 12,
         "h": 8
       },
@@ -897,7 +1090,7 @@
       "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 41,
+        "y": 50,
         "w": 24,
         "h": 1
       },
@@ -914,7 +1107,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 42,
+        "y": 51,
         "w": 8,
         "h": 8
       },
@@ -977,7 +1170,7 @@
       },
       "gridPos": {
         "x": 8,
-        "y": 42,
+        "y": 51,
         "w": 8,
         "h": 8
       },
@@ -1031,7 +1224,7 @@
       },
       "gridPos": {
         "x": 16,
-        "y": 42,
+        "y": 51,
         "w": 8,
         "h": 8
       },
