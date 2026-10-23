@@ -143,11 +143,17 @@ services:
   prometheus:
     image: prom/prometheus:v2.53.4
     container_name: apple-prometheus
+    # command를 주면 이미지 기본 CMD(config.file·storage.tsdb.path)가 통째로 대체되므로 둘을 같이 적는다.
+    # retention 기본 15d → 90d: 대회 기간 지표를 끝난 뒤에도 돌아볼 수 있게. 이 규모(수천 시계열·15s)면 하루 수십 MB.
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=90d
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     # 1g — 최근 2시간치 시계열을 메모리(head block)에 들고 있다가 디스크로 내린다.
-    # retention 15d라 대부분은 디스크(prometheus-data)에 있고 메모리는 head block + 쿼리 작업공간 몫.
+    # retention 90d라 대부분은 디스크(prometheus-data)에 있고 메모리는 head block + 쿼리 작업공간 몫.
     mem_limit: 1g
     restart: unless-stopped
 
