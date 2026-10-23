@@ -1,6 +1,7 @@
 package com.apple.game.global.security.jwt;
 
 import com.apple.game.domain.user.entity.Role;
+import com.apple.game.global.metrics.ActiveUserTracker;
 import com.apple.game.global.security.CustomUserDetails;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -28,6 +29,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final ActiveUserTracker activeUserTracker;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -59,6 +61,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+
+        // 접속자 수 게이지(active_users)의 입력. 인증이 끝난 바로 이 자리가 "누가 활동 중인지"를 가장 싸게 아는 곳이다 —
+        // 컨트롤러마다 심지 않아도 인증된 모든 HTTP 요청이 한 번씩 지나간다.
+        activeUserTracker.touch(userId);
     }
 
     private String resolveToken(HttpServletRequest request) {

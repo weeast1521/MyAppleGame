@@ -1,6 +1,7 @@
 package com.apple.game.global.security.ws;
 
 import com.apple.game.domain.user.entity.Role;
+import com.apple.game.global.metrics.ActiveUserTracker;
 import com.apple.game.global.security.jwt.JwtProperties;
 import com.apple.game.global.security.jwt.JwtTokenProvider;
 import org.junit.jupiter.api.DisplayName;
@@ -10,10 +11,12 @@ import org.springframework.messaging.MessageDeliveryException;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -28,7 +31,8 @@ class StompAuthChannelInterceptorTest {
     final JwtTokenProvider provider = new JwtTokenProvider(new JwtProperties(
             Base64.getEncoder().encodeToString("test-secret-key-must-be-at-least-32-bytes!".getBytes(StandardCharsets.UTF_8)),
             Duration.ofMinutes(30), Duration.ofDays(14)));
-    final StompAuthChannelInterceptor interceptor = new StompAuthChannelInterceptor(provider);
+    final ActiveUserTracker tracker = new ActiveUserTracker();
+    final StompAuthChannelInterceptor interceptor = new StompAuthChannelInterceptor(provider, tracker);
 
     /** Authorization 헤더를 단 CONNECT 프레임. accessor를 mutable로 둬야 인터셉터가 같은 accessor를 꺼내 setUser한다 */
     static StompHeaderAccessor connectAccessor(String token) {
@@ -60,6 +64,21 @@ class StompAuthChannelInterceptorTest {
 
         assertThatThrownBy(() -> interceptor.preSend(message(accessor), null))
                 .isInstanceOf(MessageDeliveryException.class);
+    }
+
+    @Test
+    @DisplayName("CONNECT와 그 뒤의 SEND 프레임은 Principal의 userId를 활성 사용자로 기록한다")
+    void framesWithPrincipalCountAsActiveUser() {
+        interceptor.preSend(message(connectAccessor(provider.createAccessToken(7L, Role.USER))), null);
+        assertThat(tracker.countActiveWithin(Duration.ofMinutes(5))).isEqualTo(1);
+
+        // CONNECT 이후 프레임: Spring이 세션의 Principal을 헤더에 붙여 준다 — 여기서는 그 상태를 직접 만든다
+        StompHeaderAccessor send = StompHeaderAccessor.create(StompCommand.SEND);
+        send.setUser(new UsernamePasswordAuthenticationToken("8", null, List.of()));
+        send.setLeaveMutable(true);
+        interceptor.preSend(message(send), null);
+
+        assertThat(tracker.countActiveWithin(Duration.ofMinutes(5))).isEqualTo(2);
     }
 
     @Test

@@ -141,6 +141,7 @@ CPU 2코어라 부하 테스트·다중 인스턴스 실험 시 앱끼리 경합
 - **Phase 3 — 모니터링 고도화**: Grafana 대시보드(JVM 힙·GC, HikariCP, HTTP p95, WS 세션 수), mysqld/redis-exporter 여부, 슬로우 쿼리 → `index_experiment.md` 연결
   - **09-18 1차 (#32)**: 데이터소스·대시보드 provisioning(`monitoring/grafana/`, 데이터소스 uid `prometheus` 고정) · HTTP 히스토그램 버킷 · 커스텀 지표(`websocket_sessions`·`websocket_inbound_*`·`ranking_aggregation_total`·`ranking_warmup_wait_total`) · 대시보드 "AppleGame — 부하 실습" 22패널 · 로컬 `--profile monitoring`
   - VM 반영은 배포로 되지 않는다(§9-1) — 머지 후 `docker compose -f docker-compose.prod.yml up -d grafana`
+  - **10-23 2차 — 동시 접속자 게이지**: `active_users{window="1m|5m"}`(`ActiveUserTracker`). 인증을 통과한 지점(JWT 필터·STOMP 인터셉터)에서 userId별 마지막 활동 시각을 인메모리로 기록하고 "최근 N분 안에 활동한 고유 사용자 수"를 노출한다. `websocket_sessions`는 대전 방 입장자만 세고(프론트가 방 입장 때만 WebSocket을 연다), 솔로 시작 요청 수는 재시작이 중복으로 잡혀 접속자 수로 쓸 수 없었다. 대시보드에 "활성 사용자 (5분)" 타일과 "접속자" 행(활성 사용자 1m/5m 추이, 솔로 시작/제출 2분 창)을 추가 — 솔로 시작 API는 201이라 상태 코드는 `2..`로 건다. 인스턴스 단위 값이므로 수평 확장 시 Redis로 옮긴다.
   - 남은 것: mysqld/redis-exporter · Alertmanager · 슬로우 쿼리 연결
 - **Phase 4 — 다중 인스턴스 실험**: app 2개 + Nginx upstream(SockJS 유지 시 `ip_hash` 필수), Redis pub/sub 직접 구현(O3), 인스턴스 간 브로드캐스트 정합성·Lua 동시성 검증
 - **Phase 5 — 부하 테스트**: k6 시나리오(랭킹 폭주·동시 clear·동시 가입). 로컬→VM은 절대치용, VM 내부는 상대 비교용 — 결과 표기 시 어느 쪽인지 반드시 명시
