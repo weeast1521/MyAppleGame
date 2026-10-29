@@ -36,7 +36,7 @@ public class UserController {
     }
 
     @Operation(summary = "닉네임 변경",
-            description = "본인의 닉네임을 변경한다. 2~12자, 중복 시 USER409를 반환한다.")
+            description = "본인의 닉네임을 변경한다. 2~15자, 중복 시 USER409를 반환한다.")
     @PatchMapping("/me/nickname")
     public ResponseEntity<CustomResponse<UserResDTO.UserInfo>> changeNickname(
             @AuthenticationPrincipal CustomUserDetails userDetails,
