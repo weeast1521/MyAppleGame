@@ -4,6 +4,9 @@
 # main 브랜치 보호가 "test 체크 성공"을 요구하므로 pull_request 트리거가 없으면
 # 체크가 영원히 보고되지 않아 머지가 불가능해진다.
 # 필요한 리포 시크릿: SSH_HOST(서버 IP), SSH_USER(deploy), SSH_KEY(개인키)
+#
+# 2026-11-19 운영 종료(NCP VM 할당 종료) — deploy job은 `if: false`로 꺼 두었다.
+# test·build-and-push는 그대로 돈다(main 브랜치 보호가 test 체크를 요구한다).
 name: Deploy
 
 on:
@@ -97,6 +100,10 @@ jobs:
 
   deploy:
     needs: build-and-push
+    # 운영 종료(2026-11-19)로 접속할 VM이 없다. 켜 두면 main 머지마다 SSH 실패로 빨간 X가 쌓인다.
+    # job을 지우지 않고 조건으로 막아 실행 기록에 실패가 아닌 skipped로 남긴다.
+    # 서버를 다시 띄우면 이 if 한 줄만 지우고 SSH_HOST·SSH_USER·SSH_KEY 시크릿을 새 서버 값으로 바꾼다.
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: SSH & blue-green switch
